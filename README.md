@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo.png" alt="Devin CLI Logo" width="300">
+  <img src="https://raw.githubusercontent.com/revanthpobala/devin-cli/main/assets/logo.png" alt="Devin CLI Logo" width="300">
 </p>
 
 # Devin CLI (Unofficial) — The Professional Terminal Interface for Devin AI
