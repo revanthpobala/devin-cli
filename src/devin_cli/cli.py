@@ -19,7 +19,7 @@ import sys
 app = typer.Typer(help="Unofficial CLI for Devin AI", no_args_is_help=True)
 console = Console()
 
-ASCII_LOGO = """
+ASCII_LOGO = r"""
 [bold cyan]
     ____             _          _________    ____
    / __ \___ _   __(_)___     / ____/ /   /  _/
