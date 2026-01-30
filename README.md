@@ -5,7 +5,7 @@
 # Devin CLI (Unofficial) — The Professional Terminal Interface for Devin AI
 
 <p align="center">
-  <a href="https://pypi.org/project/devin-cli/"><img src="https://img.shields.io/pypi/v/devin-cli?style=for-the-badge&color=0294DE" alt="PyPI version"></a>
+  <a href="https://pypi.org/project/devin-cli/"><img src="https://img.shields.io/pypi/v/devin-cli.svg?style=for-the-badge&color=0294DE" alt="PyPI version"></a>
   <a href="https://github.com/revanthpobala/devin-cli/actions/workflows/pypi-publish.yml"><img src="https://github.com/revanthpobala/devin-cli/actions/workflows/pypi-publish.yml/badge.svg" alt="Build Status"></a>
   <a href="LICENSE"><img src="https://img.shields.io/github/license/revanthpobala/devin-cli?style=for-the-badge&color=0294DE" alt="License"></a>
   <a href="https://github.com/revanthpobala/devin-cli/stargazers"><img src="https://img.shields.io/github/stars/revanthpobala/devin-cli?style=for-the-badge&color=FAD000" alt="GitHub stars"></a>

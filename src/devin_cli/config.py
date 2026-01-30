@@ -13,6 +13,10 @@ class Config:
         self._ensure_config_exists()
         self._load()
 
+    @property
+    def config_file(self) -> Path:
+        return self._config_file
+
     def _ensure_config_exists(self):
         if not self._config_dir.exists():
             self._config_dir.mkdir(parents=True, mode=0o700)

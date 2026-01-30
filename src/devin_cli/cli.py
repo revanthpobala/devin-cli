@@ -78,7 +78,7 @@ def configure(
     
     config.api_token = token
     config.base_url = base_url
-    console.print(f"[green]Token and Base URL saved to {config.CONFIG_FILE}[/green]")
+    console.print(f"[green]Token and Base URL saved to {config.config_file}[/green]")
 
 @app.command()
 @handle_api_error
