@@ -9,6 +9,9 @@ jobs:
   build-n-publish:
     name: Build and publish to PyPI
     runs-on: ubuntu-latest
+    environment:
+      name: release
+      url: https://pypi.org/p/devin-cli
     permissions:
       id-token: write  # Mandatory for trusted publishing
       contents: read
