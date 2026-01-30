@@ -510,6 +510,18 @@ def chain(
 ):
     """
     (Beta) Run a chain of playbooks.
+
+    This command allows you to execute a sequence of playbooks either via a CLI argument or a YAML workflow file.
+
+    Examples:
+        
+        # Method 1: Inline Chain
+        # Runs a prompt with a sequence of playbooks
+        $ devin chain "Refactor utils.py" --playbooks "lint_check,unit_tests"
+
+        # Method 2: Workflow File
+        # Executes all steps defined in the YAML file
+        $ devin chain --file workflow.yml
     """
     steps = []
     
