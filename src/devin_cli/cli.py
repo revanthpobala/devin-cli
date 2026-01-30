@@ -29,8 +29,8 @@ ASCII_LOGO = r"""
 [/bold cyan]
 """
 
-# Show logo on main help
-if len(sys.argv) > 1 and sys.argv[1] in ["--help", "-h"] and len(sys.argv) == 2:
+# Show logo on main help or empty args
+if len(sys.argv) == 1 or (len(sys.argv) == 2 and sys.argv[1] in ["--help", "-h"]):
     console.print(ASCII_LOGO)
 
 @app.callback()

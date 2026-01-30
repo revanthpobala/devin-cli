@@ -1,6 +1,6 @@
 [project]
 name = "devin-cli"
-version = "0.0.5"
+version = "0.0.6"
 description = "Unofficial CLI for Devin AI - The first AI Software Engineer"
 readme = "README.md"
 authors = [
