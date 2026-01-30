@@ -14,9 +14,32 @@ from devin_cli.config import config
 from devin_cli.api import sessions, knowledge, playbooks, secrets, attachments
 from devin_cli.api.client import client, APIError
 import functools
+import sys
 
 app = typer.Typer(help="Unofficial CLI for Devin AI", no_args_is_help=True)
 console = Console()
+
+ASCII_LOGO = """
+[bold cyan]
+    ____             _          _________    ____
+   / __ \___ _   __(_)___     / ____/ /   /  _/
+  / / / / _ \ | / / / __ \   / /   / /    / /  
+ / /_/ /  __/ |/ / / / / /  / /___/ /____/ /   
+/_____/\___/|___/_/_/ /_/   \____/_____/___/   
+[/bold cyan]
+"""
+
+# Show logo on main help
+if len(sys.argv) > 1 and sys.argv[1] in ["--help", "-h"] and len(sys.argv) == 2:
+    console.print(ASCII_LOGO)
+
+@app.callback()
+def main(ctx: typer.Context):
+    """
+    Unofficial CLI for Devin AI.
+    """
+    if ctx.invoked_subcommand is None and not any(arg in sys.argv for arg in ["--help", "-h"]):
+        console.print(ASCII_LOGO)
 
 def handle_api_error(func):
     """Decorator to handle API errors gracefully."""
