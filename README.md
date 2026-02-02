@@ -48,6 +48,23 @@ devin create-session "Identify and fix the race condition in our Redis cache lay
 devin watch
 ```
 
+## 🤖 Agentic Integrations (The Missing Link)
+`devin-cli` is built to be composed. Use it as a subprocess to give your primary agent (Claude, OpenDevin, locally hosted LLMs) access to a full AI Engineer.
+
+**Example: Blocking Call for Scripts**
+```bash
+# Script: Trigger Devin and wait for completion
+devin create-session "Refactor auth middleware to use JWT" --wait
+echo "Devin finished. Running integration tests..."
+npm test
+```
+
+**Example: Chaining Workflows**
+```bash
+# Chain playbooks: Security Audit -> Generate Report
+devin chain "Audit codebase for PII leaks" --playbooks "security_scan,report_gen"
+```
+
 ---
 
 ## 🛠 Command Cheat Sheet
