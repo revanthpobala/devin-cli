@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://pypi.org/project/devin-cli/"><img src="https://img.shields.io/pypi/v/devin-cli.svg?style=for-the-badge&color=0294DE" alt="PyPI version"></a>
   <a href="https://github.com/revanthpobala/homebrew-tap"><img src="https://img.shields.io/badge/Homebrew-Tap-orange?style=for-the-badge&logo=homebrew" alt="Homebrew Tap"></a>
-  <a href="https://github.com/revanthpobala/devin-cli/actions/workflows/pypi-publish.yml"><img src="https://github.com/revanthpobala/devin-cli/actions/workflows/pypi-publish.yml/badge.svg" alt="Build Status"></a>
+  <a href="https://github.com/revanthpobala/devin-cli/actions/workflows/release.yml"><img src="https://github.com/revanthpobala/devin-cli/actions/workflows/release.yml/badge.svg" alt="Build Status"></a>
 </p>
 
 > **The first unofficial CLI for the world's first AI Software Engineer.**
