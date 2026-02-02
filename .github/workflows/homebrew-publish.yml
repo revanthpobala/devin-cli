@@ -1,0 +1,50 @@
+name: Publish to Homebrew Tap
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Tag name (e.g. v0.0.9)'
+        required: true
+
+jobs:
+  update-formula:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Get Version and Hash
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            VERSION=${{ github.event.inputs.tag_name }}
+            VERSION=${VERSION#v}
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          
+          # Download source tarball from PyPI to get the hash
+          URL="https://files.pythonhosted.org/packages/source/d/devin-cli/devin_cli-$VERSION.tar.gz"
+          echo "URL=$URL" >> $GITHUB_ENV
+          
+          curl -sL $URL -o devin_cli.tar.gz
+          HASH=$(sha256sum devin_cli.tar.gz | awk '{print $1}')
+          echo "HASH=$HASH" >> $GITHUB_ENV
+
+      - name: Update Homebrew Formula
+        uses: mislav/bump-homebrew-formula-action@v3
+        with:
+          formula-name: devin-cli
+          homebrew-tap: revanthpobala/homebrew-tap
+          base-branch: main
+          download-url: ${{ env.URL }}
+          commit-message: "Update devin-cli to ${{ env.VERSION }}"
+        env:
+          COMMITTER_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}

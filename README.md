@@ -18,11 +18,20 @@ Devin CLI is designed for high-velocity engineering teams. It strips away the fr
 ## ⚡ Quick Start
 
 ### 1. Installation
-```bash
-# Recommended: Install via pipx for an isolated environment
-pipx install devin-cli 
 
-# Or via standard pip
+**Recommended: Via Homebrew (macOS)**
+```bash
+brew tap revanthpobala/tap
+brew install devin-cli
+```
+
+**Via pipx (Isolated environment)**
+```bash
+pipx install devin-cli
+```
+
+**Via pip**
+```bash
 pip install devin-cli
 ```
 
