@@ -44,3 +44,6 @@ coverage.xml
 .env
 .devbox/
 ~/.config/devin/config.json
+
+# macOS
+.DS_Store
