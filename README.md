@@ -10,7 +10,7 @@
   <a href="https://github.com/revanthpobala/devin-cli/actions/workflows/pypi-publish.yml"><img src="https://github.com/revanthpobala/devin-cli/actions/workflows/pypi-publish.yml/badge.svg" alt="Build Status"></a>
 </p>
 
-> **The first unofficial CLI for the world's first AI Software Engineer.**
+> **The first unofficial CLI for the world's first AI Software Engineer. Now fully upgraded to Devin API v3.**
 
 Devin CLI is designed for high-velocity engineering teams. It strips away the friction of the web UI, allowing you to orchestrate autonomous agents, manage complex contexts, and automate multi-step development workflows through a robust, terminal-first interface. Built for performance, SEO, and developer productivity.
 
@@ -39,191 +39,73 @@ pip install devin-cli
 ### 2. Configuration
 ```bash
 devin configure
-# Paste your API token from https://preview.devin.ai/settings
+# Paste your v3 API token (apk_... or cog_...) from https://preview.devin.ai/settings
+# Optionally configure your Organization ID here.
 ```
 
 ### 3. Your First Session
 ```bash
-devin create-session "Identify and fix the race condition in our Redis cache layer"
-devin watch
+devin sessions create -t "Identify and fix the race condition in our Redis cache layer"
 ```
 
-## 🤖 Agentic Integrations (The Missing Link)
-`devin-cli` is built to be composed. Use it as a subprocess to give your primary agent (Claude, OpenDevin, locally hosted LLMs) access to a full AI Engineer.
+---
 
-**Example: Blocking Call for Scripts**
+## 🛠 Command Cheat Sheet (v3 Architecture)
+
+The v3 architecture introduces a modular, hierarchical CLI structure focusing on enterprise features, secrets, and organizational management. Every sub-command supports the `--org` flag to override your active organization on the fly. 
+
+| Category | Commands | Description |
+| :--- | :--- | :--- |
+| **Sessions** | `create`, `list`, `get`, `insights`, `cost`, `messages`, `message`, `terminate` | Core agent lifecycle and analytics. |
+| **Knowledge** | `list`, `create`, `delete` | Manage organizational context and AI memory. |
+| **Playbooks** | `list`, `create`, `delete` | Automate complex, multi-step agent workflows. |
+| **Secrets** | `list`, `create`, `delete` | Manage API keys passing to Devin sessions. |
+| **Schedules** | `list`, `create` | Schedule recurring autonomous tasks via CRON. |
+| **Repositories** | `list`, `index` | Force indexing of Git repositories. |
+| **Attachments** | `upload`, `download` | Transfer context files seamlessly. |
+| **Enterprise** | `whoami`, `list-orgs` | Administrative identity discovery. |
+| **Global** | `configure`, `use` | CLI setup and active session swapping. |
+
+### Example Automations
+
+**Blocking Call for CI/CD:**
 ```bash
-# Script: Trigger Devin and wait for completion
-devin create-session "Refactor auth middleware to use JWT" --wait
+# Trigger Devin and wait for unit tests to be fixed
+devin sessions create "Fix the failing authentication tests" 
 echo "Devin finished. Running integration tests..."
 npm test
 ```
 
-**Example: Chaining Workflows**
+**Audit Subsystem Costs:**
 ```bash
-# Chain playbooks: Security Audit -> Generate Report
-devin chain "Audit codebase for PII leaks" --playbooks "security_scan,report_gen"
+# Get ACU consumption for a specific incident
+devin sessions cost --id <SESSION_ID>
 ```
 
 ---
 
-## 🛠 Command Cheat Sheet
+## 📟 Integration & Environment Variables
 
-### Core Workflow
-| Command | Example Usage |
-| :--- | :--- |
-| **`create-session`** | `devin create-session "Refactor the Auth module"` |
-| **`list-sessions`** | `devin list-sessions --limit 10` |
-| **`watch`** | `devin watch` (Live terminal monitoring) |
-| **`message`** | `devin message "Actually, use the standard library instead of the third-party package"` |
-| **`open`** | `devin open` (Jump to the web UI) |
-| **`status`** | `devin status` (Quick pulse check) |
-| **`terminate`** | `devin terminate` |
+Devin CLI is designed for CI/CD. Use environment variables to bypass the `configure` step entirely.
 
-### Context & Assets
-| Command | Example Usage |
-| :--- | :--- |
-| **`attach`** | `devin attach ./specs/v2.md "Implement the new billing logic"` |
-| **`upload`** | `devin upload ./db_dump.sql` |
-| **`list-knowledge`** | `devin list-knowledge` |
+- `DEVIN_API_TOKEN`: Your API token.
+- `DEVIN_ORG_ID`: Your target organization ID.
+- `DEVIN_BASE_URL`: (Optional) Overrides the standard `https://api.devin.ai/v3`.
 
-## 🛠 Detailed Command Reference
-
-Every command supports the `--help` flag for real-time documentation. Below is an exhaustive reference for the core engineering workflow.
-
-<details>
-<summary><b>🚀 create-session</b> — Start a new autonomous agent</summary>
-
-```text
-Usage: devin create-session [OPTIONS] [PROMPT]
-
-Options:
-  -t, --title TEXT          Custom session title
-  -f, --file PATH           Read prompt from file
-  -s, --secret KEY=VALUE    Inject session-specific secrets
-  -k, --knowledge-id TEXT   Knowledge IDs to include
-  --secret-id TEXT          Stored secret IDs to include
-  --max-acu INTEGER         Maximum ACU limit
-  --unlisted                Create unlisted session
-  -i, --idempotent          Idempotent creation
-```
-</details>
-
-<details>
-<summary><b>🔗 chain</b> — Orchestrate multi-step workflows (Beta)</summary>
-
-```text
-Usage: devin chain [OPTIONS] [PROMPT]
-
-Options:
-  --playbooks TEXT          Comma-separated playbook IDs
-  -f, --file PATH           Workflow YAML file
-```
-</details>
-
-<details>
-<summary><b>📎 attach</b> — Upload context and initiate task</summary>
-
-```text
-Usage: devin attach [OPTIONS] FILE PROMPT
-
-Arguments:
-  FILE    File to upload and link (ZIP, PDF, Codebase) [required]
-  PROMPT  Initial instruction for Devin [required]
-```
-</details>
-
-<details>
-<summary><b>📋 list-sessions</b> — Manage your active agents</summary>
-
-```text
-Usage: devin list-sessions [OPTIONS]
-
-Options:
-  --limit INTEGER           Number of sessions to list [default: 10]
-  --json                    Output as machine-readable JSON
-```
-</details>
-
-<details>
-<summary><b>⚙️ configure</b> — Setup your environment</summary>
-
-```text
-Usage: devin configure [OPTIONS]
-
-Initializes your local config with the DEVIN_API_TOKEN.
-```
-</details>
-
-<details>
-<summary><b>👀 watch</b> — Terminal-native live monitoring</summary>
-
-```text
-Usage: devin watch [OPTIONS] [SESSION_ID]
-
-Streams the live logs and terminal output from Devin directly to your console.
-```
-</details>
-
-<details>
-<summary><b>🛑 terminate</b> — Stop an active agent</summary>
-
-```text
-Usage: devin terminate [OPTIONS] [SESSION_ID]
-
-Permanently stops a session and releases all associated resources.
-```
-</details>
-
-<details>
-<summary><b>🌐 open</b> — Jump to the Web UI</summary>
-
-```text
-Usage: devin open [OPTIONS] [SESSION_ID]
-
-Instantly opens the specified session in your default web browser for visual debugging.
-```
-</details>
-
-<details>
-<summary><b>🧠 Knowledge & Playbooks</b> — Advanced CRUD</summary>
-
-| Command | Purpose |
-| :--- | :--- |
-| `list-knowledge` | View all shared organizational context. |
-| `create-knowledge` | Add new documentation or code references. |
-| `update-knowledge` | Refresh existing context. |
-| `list-playbooks` | View all available team playbooks. |
-| `create-playbook` | Design a new standardized workflow. |
-
-</details>
-
----
-
-## 📟 Integration & Automation
-
-### GitHub Actions Integration
-Devin CLI is designed for CI/CD. Use environment variables to bypass the `configure` step.
-```bash
+```yaml
 # Example GitHub Action Step
 env:
   DEVIN_API_TOKEN: ${{ secrets.DEVIN_API_TOKEN }}
+  DEVIN_ORG_ID: ${{ secrets.DEVIN_ORG_ID }}
 run: |
-  devin create-session "Review PR #${{ github.event.pull_request.number }}" --unlisted
-```
-
-### Advanced Scripting
-Pipe Devin's intelligence into your existing toolchain.
-```bash
-# Close all blocked sessions
-devin list-sessions --json | jq -r '.[] | select(.status_enum=="blocked") | .session_id' | xargs -I {} devin terminate {}
+  devin sessions create "Review PR #${{ github.event.pull_request.number }}"
 ```
 
 ---
 
 ## ⚙️ Engineering Specs
+- **Architecture**: Complete Devin API `v3` Support (including `v3beta1` and `enterprise` endpoints).
 - **Config Storage**: `~/.config/devin/config.json`
-- **Environment Variables**: `DEVIN_API_TOKEN`, `DEVIN_BASE_URL`
 - **Platform Support**: Linux, macOS, WSL2
 
 ---
@@ -234,13 +116,10 @@ devin list-sessions --json | jq -r '.[] | select(.status_enum=="blocked") | .ses
 pip install -e ".[dev]"
 
 # Test Suite (100% path coverage)
-PYTHONPATH=src pytest
+PYTHONPATH=src python3 -m pytest
 ```
 
 ---
 
 ## 📄 License
 MIT. **Devin CLI** is an unofficial community project and is not affiliated with Cognition AI.
-
----
-<!-- SEO Keywords: Devin AI, AI Software Engineer, Autonomous AI Agent, Devin CLI, Terminal AI, Coding Agent, AI Orchestration, Software Engineering Automation, GitHub Actions AI, Cognition AI, Devin API -->
