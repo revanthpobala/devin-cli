@@ -6,19 +6,20 @@ from devin_cli.config import config
 
 @pytest.fixture(autouse=True)
 def setup_config():
-    config.base_url = "https://api.devin.ai/v1"
+    config.base_url = "https://api.devin.ai/v3"
     config.api_token = "test_token"
+    config.org_id = "test_org"
 
 @respx.mock
 def test_list_playbooks():
-    respx.get("https://api.devin.ai/v1/playbooks").mock(
-        return_value=Response(200, json={"playbooks": []})
+    respx.get("https://api.devin.ai/v3/organizations/test_org/playbooks").mock(
+        return_value=Response(200, json={"items": []})
     )
     playbooks.list_playbooks()
 
 @respx.mock
 def test_create_playbook():
-    route = respx.post("https://api.devin.ai/v1/playbooks").mock(
+    route = respx.post("https://api.devin.ai/v3/organizations/test_org/playbooks").mock(
         return_value=Response(200, json={"id": "pb_123"})
     )
     playbooks.create_playbook("title", "body", "macro_id")
@@ -30,7 +31,7 @@ def test_create_playbook():
 
 @respx.mock
 def test_get_playbook():
-    respx.get("https://api.devin.ai/v1/playbooks/pb_123").mock(
+    respx.get("https://api.devin.ai/v3/organizations/test_org/playbooks/pb_123").mock(
         return_value=Response(200, json={"id": "pb_123", "title": "test"})
     )
     resp = playbooks.get_playbook("pb_123")
@@ -38,7 +39,7 @@ def test_get_playbook():
 
 @respx.mock
 def test_update_playbook():
-    route = respx.put("https://api.devin.ai/v1/playbooks/pb_123").mock(
+    route = respx.put("https://api.devin.ai/v3/organizations/test_org/playbooks/pb_123").mock(
         return_value=Response(200)
     )
     playbooks.update_playbook("pb_123", body="new body")
@@ -46,8 +47,15 @@ def test_update_playbook():
 
 @respx.mock
 def test_delete_playbook():
-    route = respx.delete("https://api.devin.ai/v1/playbooks/pb_123").mock(
+    route = respx.delete("https://api.devin.ai/v3/organizations/test_org/playbooks/pb_123").mock(
         return_value=Response(204)
     )
     playbooks.delete_playbook("pb_123")
     assert route.called
+
+@respx.mock
+def test_list_enterprise_playbooks():
+    respx.get("https://api.devin.ai/v3/enterprise/playbooks").mock(
+        return_value=Response(200, json={"items": []})
+    )
+    playbooks.list_enterprise_playbooks()

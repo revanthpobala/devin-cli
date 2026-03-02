@@ -13,25 +13,21 @@ class APIError(Exception):
 
 class APIClient:
     def __init__(self):
-        self._token: Optional[str] = None
-        self._headers: Dict[str, str] = {}
+        pass
 
     @property
     def token(self) -> Optional[str]:
-        if not self._token:
-            self._token = config.api_token
-        return self._token
+        return config.api_token
 
     @property
     def headers(self) -> Dict[str, str]:
-        if not self._headers:
-            t = self.token
-            if t:
-                 self._headers = {
-                    "Authorization": f"Bearer {t}",
-                    "Content-Type": "application/json",
-                }
-        return self._headers
+        t = self.token
+        headers = {
+            "Content-Type": "application/json",
+        }
+        if t:
+            headers["Authorization"] = f"Bearer {t}"
+        return headers
 
     @property
     def BASE_URL(self) -> str:
@@ -63,14 +59,38 @@ class APIClient:
         if response.status_code == 204:
             return None
 
-        try:
-            return response.json()
-        except ValueError:
-            return response.text
+        content_type = response.headers.get("Content-Type", "")
+        if "application/json" in content_type:
+            try:
+                return response.json()
+            except ValueError:
+                return response.text
+        
+        # If it's not JSON, it might be an attachment or raw text
+        if any(t in content_type for t in ["image/", "application/octet-stream", "application/pdf"]):
+            return response.content
+            
+        return response.text
 
     def request(self, method: str, endpoint: str, **kwargs) -> Any:
         self._ensure_token()
-        url = f"{self.BASE_URL}/{endpoint.lstrip('/')}"
+        
+        endpoint = endpoint.lstrip("/")
+        
+        # Determine the base URL and whether to inject organization
+        if endpoint.startswith("v3beta1/"):
+            base = config.base_url.replace("/v3", "").replace("/v2", "").replace("/v1", "").rstrip("/")
+            url = f"{base}/{endpoint}"
+            # Inject organization for v3beta1 if not present
+            if config.org_id and "/organizations/" not in url:
+                url = url.replace("v3beta1/", f"v3beta1/organizations/{config.org_id}/")
+        elif endpoint.startswith("enterprise/"):
+            url = f"{self.BASE_URL}/{endpoint}"
+        else:
+            # Standard path, inject organization if configured
+            if config.org_id and not endpoint.startswith("organizations/"):
+                endpoint = f"organizations/{config.org_id}/{endpoint}"
+            url = f"{self.BASE_URL}/{endpoint}"
         
         # Merge headers if needed, but usually self.headers is enough
         headers = self.headers.copy()
@@ -82,22 +102,22 @@ class APIClient:
             headers.pop("Content-Type", None)
 
         try:
-            with httpx.Client() as client:
+            with httpx.Client(follow_redirects=True) as client:
                 response = client.request(method, url, headers=headers, **kwargs)
                 return self._handle_response(response)
         except httpx.RequestError as e:
             raise APIError(f"Network error: {e}")
 
-    def get(self, endpoint: str, params: Optional[Dict] = None) -> Any:
-        return self.request("GET", endpoint, params=params)
+    def get(self, endpoint: str, **kwargs) -> Any:
+        return self.request("GET", endpoint, **kwargs)
 
-    def post(self, endpoint: str, data: Optional[Dict] = None, files: Optional[Dict] = None) -> Any:
-        return self.request("POST", endpoint, json=data, files=files)
+    def post(self, endpoint: str, **kwargs) -> Any:
+        return self.request("POST", endpoint, **kwargs)
 
-    def put(self, endpoint: str, data: Optional[Dict] = None) -> Any:
-        return self.request("PUT", endpoint, json=data)
+    def put(self, endpoint: str, **kwargs) -> Any:
+        return self.request("PUT", endpoint, **kwargs)
 
-    def delete(self, endpoint: str) -> Any:
-        return self.request("DELETE", endpoint)
+    def delete(self, endpoint: str, **kwargs) -> Any:
+        return self.request("DELETE", endpoint, **kwargs)
 
 client = APIClient()

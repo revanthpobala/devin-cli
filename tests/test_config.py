@@ -14,7 +14,7 @@ def test_config_defaults(tmp_path):
     
     assert config.api_token is None
     assert config.current_session_id is None
-    assert config.base_url == "https://api.devin.ai/v1"
+    assert config.base_url == "https://api.devin.ai/v3"
 
 def test_config_save_load(tmp_path):
     config = Config(config_dir=tmp_path)

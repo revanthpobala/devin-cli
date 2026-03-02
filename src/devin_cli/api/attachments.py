@@ -9,4 +9,8 @@ def upload_file(file_path: str):
     with open(path, "rb") as f:
         files = {"file": f}
         # client.post handles Content-Type removal for files
+        # The client will inject /organizations/{org_id}/ if configured
         return client.post("attachments", files=files)
+
+def download_attachment(uuid: str, name: str):
+    return client.get(f"attachments/{uuid}/{name}")

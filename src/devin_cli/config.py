@@ -47,8 +47,27 @@ class Config:
         self._save()
 
     @property
+    def org_id(self) -> Optional[str]:
+        # Temporary override takes highest precedence (CLI flag)
+        # then env var, then config file
+        return getattr(self, "_temporary_org_id", None) or os.environ.get("DEVIN_ORG_ID") or self._data.get("org_id")
+
+    @org_id.setter
+    def org_id(self, value: str):
+        self._data["org_id"] = value
+        self._save()
+
+    @property
+    def temporary_org_id(self) -> Optional[str]:
+        return getattr(self, "_temporary_org_id", None)
+
+    @temporary_org_id.setter
+    def temporary_org_id(self, value: Optional[str]):
+        self._temporary_org_id = value
+
+    @property
     def base_url(self) -> str:
-        return os.environ.get("DEVIN_BASE_URL") or self._data.get("base_url", "https://api.devin.ai/v1")
+        return os.environ.get("DEVIN_BASE_URL") or self._data.get("base_url", "https://api.devin.ai/v3")
 
     @base_url.setter
     def base_url(self, value: str):

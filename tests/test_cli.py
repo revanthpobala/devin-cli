@@ -7,7 +7,7 @@ runner = CliRunner()
 def test_app_help():
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
-    assert "Unofficial CLI for Devin AI" in result.stdout
+    assert "Unofficial CLI for Devin AI v3" in result.stdout
 
 def test_app_configure_help():
     result = runner.invoke(app, ["configure", "--help"])
@@ -19,9 +19,8 @@ def test_cli_handles_api_error():
     # Mock create_session to raise an exception
     with patch("devin_cli.api.sessions.create_session") as mock_create:
         mock_create.side_effect = Exception("API BOOM")
-        # create-session requires prompt argument
-        result = runner.invoke(app, ["create-session", "test prompt"])
-        print(result.stdout)
+        # command is now 'sessions create'
+        result = runner.invoke(app, ["sessions", "create", "test prompt"])
         assert result.exit_code == 1
         assert "Unexpected Error" in result.stdout
         assert "API BOOM" in result.stdout
