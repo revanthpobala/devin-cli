@@ -10,7 +10,7 @@
   <a href="https://github.com/revanthpobala/devin-cli/actions/workflows/pypi-publish.yml"><img src="https://github.com/revanthpobala/devin-cli/actions/workflows/pypi-publish.yml/badge.svg" alt="Build Status"></a>
 </p>
 
-> **The first unofficial CLI for the world's first AI Software Engineer. Now fully upgraded to Devin API v3.**
+> **The first unofficial CLI for the world's first AI Software Engineer. Now upgraded to v1.1.0 with Multi-Profile support and legacy v1 backward-compatibility.**
 
 Devin CLI is designed for high-velocity engineering teams. It strips away the friction of the web UI, allowing you to orchestrate autonomous agents, manage complex contexts, and automate multi-step development workflows through a robust, terminal-first interface. Built for performance, SEO, and developer productivity.
 
@@ -47,6 +47,15 @@ devin configure
 ```bash
 devin sessions create -t "Identify and fix the race condition in our Redis cache layer"
 ```
+
+## 🌟 What's New in v1.1.0
+
+- **Dual-Token Profiles:** Seamlessly switch between personal (`apk_user_`) and Service Account (`cog_`) tokens on the fly using `--profile`.
+  - `devin configure --profile service`
+  - `devin --profile service sessions list`
+- **Legacy v1 Backward Compatibility:** Need to run an older integration that depends on the original Devin API shapes? The CLI now acts as a dynamic proxy. Simply configure a profile to use `api_version: v1`, and the CLI will route authentic payloads directly to the deprecated v1 endpoints without breaking your v3 integrations.
+- **Session Deduplication (Anti-Spam):** Avoid burning ACUs on accidental retries. The CLI now actively caches a SHA-256 hash of your last 50 prompts per profile, immediately halting and alerting you if you attempt to launch a duplicate session.
+- **Advanced Mode Auth:** Automatically traps `advanced_mode_url` requirements and securely prompts you to finish the connection handshake directly in your web browser.
 
 ---
 
