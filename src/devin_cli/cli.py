@@ -18,6 +18,7 @@ import functools
 import sys
 import hashlib
 import importlib.metadata
+from rich.prompt import Prompt
 
 try:
     __version__ = importlib.metadata.version("devin-cli")
@@ -295,7 +296,7 @@ def list_messages_cmd(
     msgs = resp.get("messages", [])
     for m in msgs:
         role = m.get("role", "unknown")
-        content = m.get("content", "")
+        content = m.get("message", "") or m.get("content", "")
         console.print(f"[bold cyan]{role}:[/bold cyan] {content}")
         console.print("---")
 

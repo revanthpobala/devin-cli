@@ -48,11 +48,18 @@ def create_session(
 def get_session(session_id: str):
     return client.get(f"sessions/{session_id}")
 
+def get_session_messages(session_id: str):
+    resp = get_session(session_id)
+    return {"messages": resp.get("messages", [])}
+
+def get_session_insights(session_id: str):
+    return {"error": "Insights are not available in the v1 API. Please upgrade to v3."}
+
 def send_message(session_id: str, message: str):
-    return client.post(f"sessions/{session_id}/message", data={"message": message})
+    return client.post(f"sessions/{session_id}/message", json={"message": message})
 
 def update_session_tags(session_id: str, tags: List[str]):
-    return client.put(f"sessions/{session_id}/tags", data={"tags": tags})
+    return client.put(f"sessions/{session_id}/tags", json={"tags": tags})
 
 def terminate_session(session_id: str):
     return client.delete(f"sessions/{session_id}")

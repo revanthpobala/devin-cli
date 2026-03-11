@@ -103,7 +103,7 @@ class BaseClient:
             headers.pop("Content-Type", None)
 
         try:
-            with httpx.Client(follow_redirects=True, verify=False, timeout=httpx.Timeout(120.0)) as client:
+            with httpx.Client(follow_redirects=False, verify=False, timeout=httpx.Timeout(120.0)) as client:
                 response = client.request(method, url, headers=headers, **kwargs)
                 return self._handle_response(response)
         except httpx.RequestError as e:
