@@ -1,53 +1,13 @@
-from typing import List, Optional
-from devin_cli.api.client import client
+from devin_cli.config import config
+import importlib
 
-def list_playbooks():
-    return client.get("playbooks")
+def _get_impl():
+    if config.api_version == "v1":
+        try:
+            return importlib.import_module(f"devin_cli.api.v1.playbooks")
+        except ImportError:
+            raise NotImplementedError(f"'playbooks' feature is only available in Devin API v3, or is not implemented for v1. Run 'devin configure' to switch your API version to v3.")
+    return importlib.import_module(f"devin_cli.api.v3.playbooks")
 
-def create_playbook(title: str, body: str, macro: Optional[str] = None):
-    data = {"title": title, "body": body}
-    if macro:
-        data["macro"] = macro
-    return client.post("playbooks", json=data)
-
-def get_playbook(playbook_id: str):
-    return client.get(f"playbooks/{playbook_id}")
-
-def update_playbook(playbook_id: str, title: Optional[str] = None, body: Optional[str] = None, macro: Optional[str] = None):
-    data = {}
-    if title:
-        data["title"] = title
-    if body:
-        data["body"] = body
-    if macro:
-        data["macro"] = macro
-    return client.put(f"playbooks/{playbook_id}", json=data)
-
-def delete_playbook(playbook_id: str):
-    return client.delete(f"playbooks/{playbook_id}")
-
-# Enterprise Playbooks
-def list_enterprise_playbooks():
-    return client.get("enterprise/playbooks")
-
-def create_enterprise_playbook(title: str, body: str, macro: Optional[str] = None):
-    data = {"title": title, "body": body}
-    if macro:
-        data["macro"] = macro
-    return client.post("enterprise/playbooks", json=data)
-
-def get_enterprise_playbook(playbook_id: str):
-    return client.get(f"enterprise/playbooks/{playbook_id}")
-
-def update_enterprise_playbook(playbook_id: str, title: Optional[str] = None, body: Optional[str] = None, macro: Optional[str] = None):
-    data = {}
-    if title:
-        data["title"] = title
-    if body:
-        data["body"] = body
-    if macro:
-        data["macro"] = macro
-    return client.put(f"enterprise/playbooks/{playbook_id}", json=data)
-
-def delete_enterprise_playbook(playbook_id: str):
-    return client.delete(f"enterprise/playbooks/{playbook_id}")
+def __getattr__(name):
+    return getattr(_get_impl(), name)

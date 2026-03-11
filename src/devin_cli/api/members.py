@@ -1,10 +1,13 @@
-from devin_cli.api.client import client
+from devin_cli.config import config
+import importlib
 
-def get_self():
-    """Get current authenticated user info (Enterprise context)"""
-    # Based on Devin API v3 "Self" category info
-    return client.get("enterprise/members/self")
+def _get_impl():
+    if config.api_version == "v1":
+        try:
+            return importlib.import_module(f"devin_cli.api.v1.members")
+        except ImportError:
+            raise NotImplementedError(f"'members' feature is only available in Devin API v3, or is not implemented for v1. Run 'devin configure' to switch your API version to v3.")
+    return importlib.import_module(f"devin_cli.api.v3.members")
 
-def get_user(user_id: str):
-    """Get info for a specific user"""
-    return client.get(f"enterprise/members/users/{user_id}")
+def __getattr__(name):
+    return getattr(_get_impl(), name)

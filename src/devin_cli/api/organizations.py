@@ -1,9 +1,13 @@
-from devin_cli.api.client import client
+from devin_cli.config import config
+import importlib
 
-def list_organizations():
-    """List all organizations (Enterprise key required)"""
-    return client.get("enterprise/organizations")
+def _get_impl():
+    if config.api_version == "v1":
+        try:
+            return importlib.import_module(f"devin_cli.api.v1.organizations")
+        except ImportError:
+            raise NotImplementedError(f"'organizations' feature is only available in Devin API v3, or is not implemented for v1. Run 'devin configure' to switch your API version to v3.")
+    return importlib.import_module(f"devin_cli.api.v3.organizations")
 
-def get_organization(org_id: str):
-    """Get details of a specific organization (Enterprise key required)"""
-    return client.get(f"enterprise/organizations/{org_id}")
+def __getattr__(name):
+    return getattr(_get_impl(), name)

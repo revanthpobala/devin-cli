@@ -1,16 +1,13 @@
-from devin_cli.api.client import client
-from pathlib import Path
+from devin_cli.config import config
+import importlib
 
-def upload_file(file_path: str):
-    path = Path(file_path)
-    if not path.exists():
-        raise FileNotFoundError(f"File not found: {file_path}")
-        
-    with open(path, "rb") as f:
-        files = {"file": f}
-        # client.post handles Content-Type removal for files
-        # The client will inject /organizations/{org_id}/ if configured
-        return client.post("attachments", files=files)
+def _get_impl():
+    if config.api_version == "v1":
+        try:
+            return importlib.import_module(f"devin_cli.api.v1.attachments")
+        except ImportError:
+            raise NotImplementedError(f"'attachments' feature is only available in Devin API v3, or is not implemented for v1. Run 'devin configure' to switch your API version to v3.")
+    return importlib.import_module(f"devin_cli.api.v3.attachments")
 
-def download_attachment(uuid: str, name: str):
-    return client.get(f"attachments/{uuid}/{name}")
+def __getattr__(name):
+    return getattr(_get_impl(), name)

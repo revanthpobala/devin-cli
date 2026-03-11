@@ -11,7 +11,7 @@ class APIError(Exception):
         super().__init__(message)
         self.status_code = status_code
 
-class APIClient:
+class BaseClient:
     def __init__(self):
         pass
 
@@ -43,19 +43,33 @@ class APIClient:
             response.raise_for_status()
         except httpx.HTTPStatusError as e:
             status = e.response.status_code
+            path = str(e.request.url.path)
+            
+            error_detail = ""
+            try:
+                error_body = e.response.json()
+                error_detail = error_body.get("detail") or error_body.get("message") or error_body.get("error") or str(error_body)
+            except Exception:
+                error_detail = e.response.text.strip()
+                
+            msg_suffix = f"\n  Path:   {path}"
+            if error_detail:
+                msg_suffix += f"\n  Detail: {error_detail}"
+
             if status == 401:
-                raise APIError("Invalid or expired API token (401). Run 'devin configure'.", status)
+                raise APIError(f"Invalid or expired API token (401).{msg_suffix}", status)
             elif status == 403:
-                raise APIError("Insufficient permissions (403).", status)
+                raise APIError(f"Insufficient permissions (403).{msg_suffix}", status)
             elif status == 404:
-                raise APIError("Resource not found (404).", status)
+                raise APIError(f"Resource not found (404).{msg_suffix}", status)
+            elif status == 422:
+                raise APIError(f"Validation Error (422).{msg_suffix}", status)
             elif status == 429:
-                raise APIError("Rate limit exceeded (429). Please try again later.", status)
+                raise APIError(f"Rate limit exceeded (429). Please try again later.", status)
             elif status >= 500:
-                raise APIError(f"Server error ({status}).", status)
+                raise APIError(f"Server error ({status}).{msg_suffix}", status)
             else:
-                raise APIError(f"HTTP Error {status}: {e}", status)
-        
+                raise APIError(f"HTTP Error {status}.{msg_suffix}", status)
         if response.status_code == 204:
             return None
 
@@ -72,25 +86,12 @@ class APIClient:
             
         return response.text
 
+    def _format_url(self, endpoint: str) -> str:
+        raise NotImplementedError()
+
     def request(self, method: str, endpoint: str, **kwargs) -> Any:
         self._ensure_token()
-        
-        endpoint = endpoint.lstrip("/")
-        
-        # Determine the base URL and whether to inject organization
-        if endpoint.startswith("v3beta1/"):
-            base = config.base_url.replace("/v3", "").replace("/v2", "").replace("/v1", "").rstrip("/")
-            url = f"{base}/{endpoint}"
-            # Inject organization for v3beta1 if not present
-            if config.org_id and "/organizations/" not in url:
-                url = url.replace("v3beta1/", f"v3beta1/organizations/{config.org_id}/")
-        elif endpoint.startswith("enterprise/"):
-            url = f"{self.BASE_URL}/{endpoint}"
-        else:
-            # Standard path, inject organization if configured
-            if config.org_id and not endpoint.startswith("organizations/"):
-                endpoint = f"organizations/{config.org_id}/{endpoint}"
-            url = f"{self.BASE_URL}/{endpoint}"
+        url = self._format_url(endpoint)
         
         # Merge headers if needed, but usually self.headers is enough
         headers = self.headers.copy()
@@ -102,7 +103,7 @@ class APIClient:
             headers.pop("Content-Type", None)
 
         try:
-            with httpx.Client(follow_redirects=True) as client:
+            with httpx.Client(follow_redirects=True, verify=False, timeout=httpx.Timeout(120.0)) as client:
                 response = client.request(method, url, headers=headers, **kwargs)
                 return self._handle_response(response)
         except httpx.RequestError as e:
@@ -120,4 +121,45 @@ class APIClient:
     def delete(self, endpoint: str, **kwargs) -> Any:
         return self.request("DELETE", endpoint, **kwargs)
 
-client = APIClient()
+class V3Client(BaseClient):
+    def _format_url(self, endpoint: str) -> str:
+        endpoint = endpoint.lstrip("/")
+        if endpoint.startswith("v3beta1/"):
+            base = config.base_url.replace("/v3", "").replace("/v2", "").replace("/v1", "").rstrip("/")
+            url = f"{base}/{endpoint}"
+            if config.org_id and "/organizations/" not in url:
+                url = url.replace("v3beta1/", f"v3beta1/organizations/{config.org_id}/")
+            return url
+        elif endpoint.startswith("enterprise/"):
+            return f"{self.BASE_URL}/{endpoint}"
+        else:
+            if config.org_id and not endpoint.startswith("organizations/"):
+                endpoint = f"organizations/{config.org_id}/{endpoint}"
+            return f"{self.BASE_URL}/{endpoint}"
+
+class V1Client(BaseClient):
+    def _format_url(self, endpoint: str) -> str:
+        return f"{self.BASE_URL}/{endpoint.lstrip('/')}"
+
+class ClientProxy:
+    def __init__(self):
+        self._v1 = V1Client()
+        self._v3 = V3Client()
+        
+    @property
+    def _client(self) -> BaseClient:
+        return self._v1 if config.api_version == "v1" else self._v3
+
+    def get(self, endpoint: str, **kwargs) -> Any:
+        return self._client.get(endpoint, **kwargs)
+
+    def post(self, endpoint: str, **kwargs) -> Any:
+        return self._client.post(endpoint, **kwargs)
+
+    def put(self, endpoint: str, **kwargs) -> Any:
+        return self._client.put(endpoint, **kwargs)
+
+    def delete(self, endpoint: str, **kwargs) -> Any:
+        return self._client.delete(endpoint, **kwargs)
+
+client = ClientProxy()

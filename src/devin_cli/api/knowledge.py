@@ -1,43 +1,13 @@
-from typing import List, Optional
-from devin_cli.api.client import client
+from devin_cli.config import config
+import importlib
 
-def list_knowledge():
-    return client.get("knowledge/notes")
+def _get_impl():
+    if config.api_version == "v1":
+        try:
+            return importlib.import_module(f"devin_cli.api.v1.knowledge")
+        except ImportError:
+            raise NotImplementedError(f"'knowledge' feature is only available in Devin API v3, or is not implemented for v1. Run 'devin configure' to switch your API version to v3.")
+    return importlib.import_module(f"devin_cli.api.v3.knowledge")
 
-def create_knowledge(
-    title: str,
-    body: str,
-    # v3 uses title/body, v1 used name/body/trigger_description
-    # We'll map them for compatibility if possible, but v3 is primary
-):
-    data = {
-        "title": title,
-        "body": body,
-    }
-    return client.post("knowledge/notes", json=data)
-
-def get_knowledge(note_id: str):
-    return client.get(f"knowledge/notes/{note_id}")
-
-def update_knowledge(
-    note_id: str,
-    title: Optional[str] = None,
-    body: Optional[str] = None,
-):
-    data = {}
-    if title:
-        data["title"] = title
-    if body:
-        data["body"] = body
-        
-    return client.put(f"knowledge/notes/{note_id}", json=data)
-
-def delete_knowledge(note_id: str):
-    return client.delete(f"knowledge/notes/{note_id}")
-
-# Enterprise Knowledge
-def list_enterprise_knowledge():
-    return client.get("enterprise/knowledge/notes")
-
-def get_enterprise_knowledge(note_id: str):
-    return client.get(f"enterprise/knowledge/notes/{note_id}")
+def __getattr__(name):
+    return getattr(_get_impl(), name)

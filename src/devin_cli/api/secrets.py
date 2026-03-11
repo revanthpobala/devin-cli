@@ -1,10 +1,13 @@
-from devin_cli.api.client import client
+from devin_cli.config import config
+import importlib
 
-def list_secrets():
-    return client.get("secrets")
+def _get_impl():
+    if config.api_version == "v1":
+        try:
+            return importlib.import_module(f"devin_cli.api.v1.secrets")
+        except ImportError:
+            raise NotImplementedError(f"'secrets' feature is only available in Devin API v3, or is not implemented for v1. Run 'devin configure' to switch your API version to v3.")
+    return importlib.import_module(f"devin_cli.api.v3.secrets")
 
-def create_secret(name: str, value: str):
-    return client.post("secrets", json={"name": name, "value": value})
-
-def delete_secret(secret_id: str):
-    return client.delete(f"secrets/{secret_id}")
+def __getattr__(name):
+    return getattr(_get_impl(), name)

@@ -42,7 +42,7 @@ def test_update_playbook():
     route = respx.put("https://api.devin.ai/v3/organizations/test_org/playbooks/pb_123").mock(
         return_value=Response(200)
     )
-    playbooks.update_playbook("pb_123", body="new body")
+    playbooks.update_playbook("pb_123", title="new title", body="new body")
     assert route.called
 
 @respx.mock

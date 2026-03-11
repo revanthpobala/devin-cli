@@ -16,23 +16,44 @@ from devin_cli.api.client import client, APIError
 import webbrowser
 import functools
 import sys
+import hashlib
+import importlib.metadata
+
+try:
+    __version__ = importlib.metadata.version("devin-cli")
+except importlib.metadata.PackageNotFoundError:
+    __version__ = "unknown"
+
+# Early profile detection for accurate --help menus
+if "--profile" in sys.argv:
+    idx = sys.argv.index("--profile")
+    if idx + 1 < len(sys.argv):
+        config.active_profile = sys.argv[idx + 1]
+elif "-p" in sys.argv:
+    idx = sys.argv.index("-p")
+    if idx + 1 < len(sys.argv):
+        config.active_profile = sys.argv[idx + 1]
+
+IS_V1 = config.api_version == "v1"
+v1_tag = " [bold yellow](Legacy v1 API)[/bold yellow]" if IS_V1 else ""
+v3_only = " [bold red](v3 Only)[/bold red]" if IS_V1 else ""
 
 app = typer.Typer(
-    help="Unofficial CLI for Devin AI v3",
+    help=f"Unofficial CLI for Devin AI{' (V1 Legacy Mode)' if IS_V1 else ' v3'}",
     no_args_is_help=True,
     rich_markup_mode="rich"
 )
 console = Console()
 
 # --- Sub-Apps for Organization API ---
-session_app = typer.Typer(help="Manage Devin sessions", no_args_is_help=True)
-knowledge_app = typer.Typer(help="Manage knowledge notes", no_args_is_help=True)
-playbook_app = typer.Typer(help="Manage team playbooks", no_args_is_help=True)
-secret_app = typer.Typer(help="Manage organization secrets", no_args_is_help=True)
-schedule_app = typer.Typer(help="Manage session schedules", no_args_is_help=True)
-attachment_app = typer.Typer(help="Manage session attachments", no_args_is_help=True)
-repo_app = typer.Typer(help="Manage organization repositories", no_args_is_help=True)
-enterprise_app = typer.Typer(help="Enterprise-scoped operations", no_args_is_help=True)
+session_app = typer.Typer(help=f"Manage Devin sessions{v1_tag}", no_args_is_help=True)
+knowledge_app = typer.Typer(help=f"Manage knowledge notes{v1_tag}", no_args_is_help=True)
+playbook_app = typer.Typer(help=f"Manage team playbooks{v1_tag}", no_args_is_help=True)
+secret_app = typer.Typer(help=f"Manage organization secrets{v1_tag}", no_args_is_help=True)
+schedule_app = typer.Typer(help=f"Manage session schedules{v3_only}", no_args_is_help=True)
+attachment_app = typer.Typer(help=f"Manage session attachments{v1_tag}", no_args_is_help=True)
+repo_app = typer.Typer(help=f"Manage organization repositories{v3_only}", no_args_is_help=True)
+enterprise_app = typer.Typer(help=f"Enterprise-scoped operations{v3_only}", no_args_is_help=True)
 
 app.add_typer(session_app, name="sessions", help="Manage Devin sessions")
 app.add_typer(session_app, name="session", hidden=True)
@@ -53,11 +74,20 @@ ASCII_LOGO = r"""
 [/bold cyan]
 """
 
-@app.callback()
-def main(ctx: typer.Context):
+@app.callback(invoke_without_command=True)
+def main(
+    ctx: typer.Context,
+    profile: str = typer.Option("default", "--profile", "-p", help="Configuration profile to use (e.g., service, personal)"),
+    version: Optional[bool] = typer.Option(None, "--version", "-v", help="Show the application's version and exit."),
+):
     """
     Unofficial CLI for Devin AI v3.
     """
+    if version:
+        console.print(f"devin CLI version: {__version__}")
+        raise typer.Exit()
+        
+    config.active_profile = profile
     if ctx.invoked_subcommand is None:
         console.print(ASCII_LOGO)
 
@@ -89,16 +119,28 @@ def configure(
     token: str = typer.Option(..., prompt="Devin API Token (starts with apk_ or cog_)", help="Your Devin API Token"),
     base_url: str = typer.Option("https://api.devin.ai/v3", prompt="Devin API Base URL", help="Devin API Base URL"),
     org_id: Optional[str] = typer.Option(None, "--org", prompt="Organization ID (optional)", help="Default Organization ID"),
+    profile: Optional[str] = typer.Option(None, "--profile", help="Profile to configure (overrides global --profile)"),
 ):
     """
     Configure the CLI with your Devin API token and organization.
     """
+    if profile:
+        config.active_profile = profile
+        
     # Validation based on v3 requirements
     if not (token.startswith("apk_") or token.startswith("cog_")):
         console.print("[bold yellow]Warning:[/bold yellow] Token format might be outdated. v3 tokens usually start with 'apk_' or 'cog_'.")
     
+    api_version_prompt = Prompt.ask(f"API Version for profile '{config.active_profile}' (v3/v1)", default=config.api_version or "v3")
+
+    if "api.devin.ai" in base_url and "v3" in base_url and api_version_prompt == "v1":
+        base_url = base_url.replace("/v3", "/v1")
+    elif "api.devin.ai" in base_url and "v1" in base_url and api_version_prompt == "v3":
+        base_url = base_url.replace("/v1", "/v3")
+
     config.api_token = token
     config.base_url = base_url
+    config.api_version = api_version_prompt
     if org_id:
         config.org_id = org_id
     console.print(f"[green]Configuration saved to {config.config_file}[/green]")
@@ -112,6 +154,8 @@ def create_session_cmd(
     title: Optional[str] = typer.Option(None, "--title", "-t", help="Custom session title"),
     org: Optional[str] = typer.Option(None, "--org", help="Override organization ID"),
     max_acu: Optional[int] = typer.Option(None, "--max-acu", help="Maximum ACU limit"),
+    advanced_mode: Optional[str] = typer.Option(None, "--advanced-mode", help="Enable advanced mode (e.g. CLI, browser) for the session"),
+    force: bool = typer.Option(False, "--force", help="Force creation even if duplicate prompt is detected"),
 ):
     """Create a new Devin session."""
     if org: config.temporary_org_id = org
@@ -122,13 +166,44 @@ def create_session_cmd(
     else:
         console.print("[bold red]Error:[/bold red] Must provide prompt or --file")
         raise typer.Exit(1)
+        
+    prompt_hash = hashlib.sha256(prompt_text.encode('utf-8')).hexdigest()
+    existing_sid = config.get_session_by_prompt_hash(prompt_hash)
+    
+    if existing_sid and not force:
+        console.print(f"[bold yellow]Duplicate Detected:[/bold yellow] You recently created a session with this exact prompt.")
+        console.print(f"Existing Session ID: [bold cyan]{existing_sid}[/bold cyan]")
+        import typer
+        if not typer.confirm("Are you sure you want to create a duplicate session?"):
+            console.print("Session creation cancelled. Use the existing session ID above to resume.")
+            raise typer.Exit()
 
     with console.status("[bold green]Creating session...[/bold green]"):
-        resp = sessions.create_session(prompt=prompt_text, title=title, max_acu_limit=max_acu)
-        sid = resp["session_id"]
-        config.current_session_id = sid
-        console.print(f"[green]Session created:[/green] {sid}")
-        console.print(f"[bold cyan]URL:[/bold cyan] {resp.get('url')}")
+        resp = sessions.create_session(
+            prompt=prompt_text, 
+            title=title, 
+            max_acu_limit=max_acu,
+            advanced_mode=advanced_mode
+        )
+        sid = resp.get("session_id")
+        
+        if "advanced_mode_url" in resp:
+            adv_url = resp["advanced_mode_url"]
+            console.print(f"[bold yellow]Advanced Mode Authorization Required![/bold yellow]")
+            console.print(f"Please complete verify the advanced mode setup in your browser:")
+            console.print(f"[bold cyan]{adv_url}[/bold cyan]")
+            import typer
+            if typer.confirm("Open browser now?"):
+                import webbrowser
+                webbrowser.open(adv_url)
+                
+        if sid:
+            config.current_session_id = sid
+            config.save_prompt_hash(prompt_hash, sid)
+            console.print(f"[green]Session created:[/green] {sid}")
+            console.print(f"[bold cyan]URL:[/bold cyan] {resp.get('url')}")
+        else:
+            console.print("[yellow]Session created, but no ID returned immediately (awaiting advanced mode setup).[/yellow]")
 
 @session_app.command("list")
 @handle_api_error
@@ -141,6 +216,10 @@ def list_sessions_cmd(
     if org: config.temporary_org_id = org
     resp = sessions.list_sessions(limit=limit)
     sess_list = resp.get("sessions", [])
+    
+    if not sess_list and config.api_token and config.api_token.startswith("cog_"):
+        console.print("[yellow]Warning: Service tokens (cog_) may only have visibility into sessions they explicitly created, not all organization sessions.[/yellow]")
+        
     if json_output:
         console.print(json.dumps(sess_list, indent=2))
     else:
@@ -179,7 +258,7 @@ def session_insights_cmd(
 @session_app.command("cost")
 @handle_api_error
 def session_cost_cmd(
-    session_id: Optional[str] = typer.Option(None, "--id"),
+    session_id: Optional[str] = typer.Argument(None, help="Specific session ID to check cost for"),
     org: Optional[str] = typer.Option(None, "--org"),
 ):
     """View ACU consumption."""
@@ -279,12 +358,28 @@ def list_playbooks_cmd(org: Optional[str] = typer.Option(None, "--org")):
     """List team playbooks."""
     if org: config.temporary_org_id = org
     resp = playbooks.list_playbooks()
+    items = resp.get("items", []) if isinstance(resp, dict) else resp
     table = Table(title="Playbooks")
     table.add_column("ID", style="cyan")
     table.add_column("Title")
-    for item in resp:
-        table.add_row(item.get("playbook_id"), item.get("title"))
+    for item in items:
+        if isinstance(item, dict):
+            table.add_row(item.get("playbook_id", ""), item.get("title", ""))
     console.print(table)
+
+@playbook_app.command("update")
+@handle_api_error
+def update_playbook_cmd(
+    playbook_id: str,
+    title: str,
+    body: Optional[str] = typer.Option(None, "--body"),
+    macro: Optional[str] = typer.Option(None, "--macro"),
+    org: Optional[str] = typer.Option(None, "--org"),
+):
+    """Update a team playbook."""
+    if org: config.temporary_org_id = org
+    resp = playbooks.update_playbook(playbook_id, title=title, body=body, macro=macro)
+    console.print(f"[green]Playbook updated:[/green] {playbook_id}")
 
 @playbook_app.command("create")
 @handle_api_error
