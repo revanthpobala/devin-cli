@@ -377,6 +377,13 @@ def update_playbook_cmd(
     org: Optional[str] = typer.Option(None, "--org"),
 ):
     """Update a team playbook."""
+    body_bytes = len(body.encode('utf-8')) if body else 0
+    if body_bytes > 500 * 1024:
+        console.print(f"[bold yellow]Warning:[/bold yellow] Playbook body is {body_bytes / 1024:.1f}KB. Devin API may reject payloads > 500KB.")
+        import typer
+        if not typer.confirm("Attempt to send anyway?"):
+            raise typer.Exit()
+            
     if org: config.temporary_org_id = org
     resp = playbooks.update_playbook(playbook_id, title=title, body=body, macro=macro)
     console.print(f"[green]Playbook updated:[/green] {playbook_id}")
@@ -390,6 +397,13 @@ def create_playbook_cmd(
     org: Optional[str] = typer.Option(None, "--org"),
 ):
     """Create a new team playbook."""
+    body_bytes = len(body.encode('utf-8')) if body else 0
+    if body_bytes > 500 * 1024:
+        console.print(f"[bold yellow]Warning:[/bold yellow] Playbook body is {body_bytes / 1024:.1f}KB. Devin API may reject payloads > 500KB.")
+        import typer
+        if not typer.confirm("Attempt to send anyway?"):
+            raise typer.Exit()
+            
     if org: config.temporary_org_id = org
     resp = playbooks.create_playbook(title, body, macro)
     console.print(f"[green]Playbook created:[/green] {resp.get('playbook_id')}")
