@@ -78,7 +78,7 @@ ASCII_LOGO = r"""
 @app.callback(invoke_without_command=True)
 def main(
     ctx: typer.Context,
-    profile: str = typer.Option("default", "--profile", "-p", help="Configuration profile to use (e.g., service, personal)"),
+    profile: Optional[str] = typer.Option(None, "--profile", "-p", help="Configuration profile to use (e.g., service, personal)"),
     version: Optional[bool] = typer.Option(None, "--version", "-v", help="Show the application's version and exit."),
 ):
     """
@@ -88,7 +88,8 @@ def main(
         console.print(f"devin CLI version: {__version__}")
         raise typer.Exit()
         
-    config.active_profile = profile
+    if profile:
+        config.active_profile = profile
     if ctx.invoked_subcommand is None:
         console.print(ASCII_LOGO)
 
