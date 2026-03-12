@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.5] - 2026-03-11
+### Fixed
+- `repos list` table now correctly resolves repository paths by handling direct list API responses and trying `repository_path`, `full_name`, `path`, and `name` keys in sequence.
+- `sessions cost` now shows an informative message when `acu_used` is `null` (v1 API sessions or service tokens without cost visibility) instead of silently displaying null.
+
 ## [1.1.4] - 2026-03-11
 ### Fixed
 - Fixed `NameError` crash in `v1/knowledge.py` (`macro` referenced but never declared as a parameter).
