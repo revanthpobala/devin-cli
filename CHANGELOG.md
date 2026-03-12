@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.8] - 2026-03-11
+### Added
+- Restored all 0.1.x flat commands: `watch`, `status`, `open`, `message`, `terminate`, `list-sessions`, `create-session`, `upload`, `list-knowledge`, `attach`, `update-tags`, `history`, `messages`, `get-session`, `update-knowledge`, `update-playbook`, `delete-playbook`, `list-secrets`, `delete-secret`, `chain`.
+- `--wait` / `-w` flag on `create-session` and `sessions create` — blocks until the session reaches a terminal status.
+- `sessions watch` now displays `structured_output` inline and uses exponential backoff (caps at 30s).
+- `chain` command supports both inline `--playbooks` chaining and YAML workflow files.
+- `attach` command correctly embeds the uploaded file URL in the session prompt.
+
 ## [1.1.7] - 2026-03-11
 ### Fixed
 - `knowledge list` now correctly reads `notes` key from the v3 `knowledge/notes` endpoint, with `knowledge` as fallback. Also reads `title` in addition to `name` for display.

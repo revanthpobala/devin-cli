@@ -157,6 +157,8 @@ def create_session_cmd(
     max_acu: Optional[int] = typer.Option(None, "--max-acu", help="Maximum ACU limit"),
     advanced_mode: Optional[str] = typer.Option(None, "--advanced-mode", help="Enable advanced mode (e.g. CLI, browser) for the session"),
     force: bool = typer.Option(False, "--force", help="Force creation even if duplicate prompt is detected"),
+    wait: bool = typer.Option(False, "--wait", "-w", help="Block until the session reaches a terminal status"),
+    interval: int = typer.Option(5, "--interval", help="Polling interval in seconds when --wait is used"),
 ):
     """Create a new Devin session."""
     if org: config.temporary_org_id = org
@@ -201,6 +203,19 @@ def create_session_cmd(
             config.save_prompt_hash(prompt_hash, sid)
             console.print(f"[green]Session created:[/green] {sid}")
             console.print(f"[bold cyan]URL:[/bold cyan] {resp.get('url')}")
+
+            if wait:
+                terminal_statuses = {"stopped", "finished", "error", "cancelled", "failed"}
+                console.print(f"[dim]Waiting for session to complete (polling every {interval}s)...[/dim]")
+                with console.status("[bold green]Running...[/bold green]") as s:
+                    while True:
+                        time.sleep(interval)
+                        poll = sessions.get_session(sid)
+                        current_status = poll.get("status_enum", "").lower()
+                        s.update(f"[bold green]Status: {current_status}[/bold green]")
+                        if current_status in terminal_statuses:
+                            console.print(f"[bold green]Session finished:[/bold green] {current_status}")
+                            break
         else:
             console.print("[yellow]Session created, but no ID returned immediately (awaiting advanced mode setup).[/yellow]")
 
@@ -611,6 +626,370 @@ def use_session_cmd(session_id: str):
     """Switch the current active session."""
     config.current_session_id = session_id
     console.print(f"[green]Switched to session {session_id}[/green]")
+
+@app.command("status")
+@handle_api_error
+def status_cmd():
+    """Show the status of the current active session."""
+    sid = get_current_session_id()
+    resp = sessions.get_session(sid)
+    status = resp.get("status_enum", "unknown")
+    title  = resp.get("title") or resp.get("prompt", "")[:60]
+    url    = resp.get("url", "")
+    acus   = resp.get("acus_consumed") or resp.get("acu_used")
+
+    color = {"running": "green", "stopped": "red", "paused": "yellow"}.get(status, "cyan")
+    console.print(f"[bold]Session:[/bold] [cyan]{sid}[/cyan]")
+    console.print(f"[bold]Status:[/bold]  [{color}]{status}[/{color}]")
+    if title:
+        console.print(f"[bold]Title:[/bold]   {title}")
+    if acus is not None:
+        console.print(f"[bold]ACUs:[/bold]    {acus}")
+    if url:
+        console.print(f"[bold]URL:[/bold]     [underline]{url}[/underline]")
+
+@app.command("open")
+@handle_api_error
+def open_cmd(
+    session_id: Optional[str] = typer.Argument(None, help="Session ID to open (defaults to active session)"),
+):
+    """Open the active session in your browser."""
+    sid = session_id or get_current_session_id()
+    resp = sessions.get_session(sid)
+    url = resp.get("url")
+    if not url:
+        console.print("[bold red]Error:[/bold red] No URL available for this session.")
+        raise typer.Exit(1)
+    webbrowser.open(url)
+    console.print(f"[green]Opened:[/green] {url}")
+
+@session_app.command("watch")
+@handle_api_error
+def watch_session_cmd(
+    session_id: Optional[str] = typer.Argument(None, help="Session ID to watch (defaults to active session)"),
+    interval: int = typer.Option(3, "--interval", "-i", help="Polling interval in seconds"),
+    org: Optional[str] = typer.Option(None, "--org"),
+):
+    """Live-watch a session — polls status and streams new messages."""
+    if org: config.temporary_org_id = org
+    sid = session_id or get_current_session_id()
+
+    terminal_statuses = {"stopped", "finished", "error", "cancelled", "failed", "blocked"}
+    backoff = interval
+
+    def build_status_panel(resp: dict) -> Panel:
+        status_val = resp.get("status_enum", "unknown")
+        title_val  = resp.get("title") or resp.get("prompt", "")[:60]
+        acus       = resp.get("acus_consumed") or resp.get("acu_used", "n/a")
+        color      = {"running": "green", "stopped": "red", "paused": "yellow",
+                      "finished": "blue", "blocked": "red"}.get(status_val, "cyan")
+        text = Text()
+        text.append("Session: ", style="bold")
+        text.append(f"{sid}\n", style="cyan")
+        text.append("Status:  ", style="bold")
+        text.append(f"{status_val}\n", style=color)
+        if title_val:
+            text.append(f"Title:   {title_val}\n")
+        text.append(f"ACUs:    {acus}\n")
+        so = resp.get("structured_output")
+        if so:
+            text.append("\nStructured Output:\n", style="bold")
+            text.append(json.dumps(so, indent=2))
+        text.append("\nPress Ctrl+C to stop watching.", style="dim")
+        return Panel(text, title="[bold cyan]Devin Watch[/bold cyan]", border_style="cyan")
+
+    console.print(f"[bold cyan]Watching session {sid}[/bold cyan] (Ctrl+C to stop)")
+
+    with Live(console=console, refresh_per_second=4) as live:
+        try:
+            while True:
+                resp = sessions.get_session(sid)
+                live.update(build_status_panel(resp))
+
+                if resp.get("status_enum", "").lower() in terminal_statuses:
+                    live.update(build_status_panel(resp))
+                    console.print(f"[bold green]Session {resp.get('status_enum')}![/bold green]")
+                    break
+
+                time.sleep(min(backoff, 30))
+                backoff = min(backoff * 1.5, 30)
+        except KeyboardInterrupt:
+            console.print("\n[dim]Watch stopped.[/dim]")
+
+# --- Flat top-level aliases (backward compat with 0.1.x command structure) ---
+
+@app.command("watch", hidden=True)
+@handle_api_error
+def watch_cmd(
+    session_id: Optional[str] = typer.Argument(None),
+    interval: int = typer.Option(3, "--interval", "-i"),
+):
+    """Alias for: devin sessions watch"""
+    watch_session_cmd(session_id=session_id, interval=interval, org=None)
+
+@app.command("message")
+@handle_api_error
+def message_cmd(
+    text: str = typer.Argument(..., help="Message to send"),
+    session_id: Optional[str] = typer.Option(None, "--id"),
+):
+    """Send a message to the active session."""
+    sid = session_id or get_current_session_id()
+    sessions.send_message(sid, text)
+    console.print(f"[green]Message sent to {sid}[/green]")
+
+@app.command("terminate")
+@handle_api_error
+def terminate_cmd(
+    session_id: Optional[str] = typer.Argument(None),
+):
+    """Terminate the active session."""
+    sid = session_id or get_current_session_id()
+    if typer.confirm(f"Terminate session {sid}?"):
+        sessions.terminate_session(sid)
+        console.print(f"[green]Session {sid} terminated.[/green]")
+
+@app.command("list-sessions")
+@handle_api_error
+def list_sessions_top_cmd(
+    limit: int = typer.Option(10, "--limit", "-n"),
+    json_output: bool = typer.Option(False, "--json"),
+):
+    """List recent sessions (alias for: devin sessions list)."""
+    resp = sessions.list_sessions(limit=limit)
+    sess_list = resp.get("sessions", [])
+    if json_output:
+        console.print(json.dumps(sess_list, indent=2))
+        return
+    table = Table(title="Devin Sessions")
+    table.add_column("ID", style="cyan")
+    table.add_column("Status", style="magenta")
+    table.add_column("Title")
+    for s in sess_list:
+        table.add_row(s.get("session_id"), s.get("status_enum"), s.get("title") or s.get("prompt", "")[:50])
+    console.print(table)
+
+@app.command("create-session")
+@handle_api_error
+def create_session_top_cmd(
+    prompt: str = typer.Argument(..., help="The prompt for the session"),
+    title: Optional[str] = typer.Option(None, "--title", "-t"),
+    wait: bool = typer.Option(False, "--wait", "-w", help="Block until the session completes"),
+    interval: int = typer.Option(5, "--interval"),
+    force: bool = typer.Option(False, "--force"),
+):
+    """Create a new session (alias for: devin sessions create)."""
+    create_session_cmd(prompt=prompt, file=None, title=title, org=None, max_acu=None,
+                       advanced_mode=None, force=force, wait=wait, interval=interval)
+
+@app.command("upload")
+@handle_api_error
+def upload_cmd(path: Path = typer.Argument(..., help="File to upload")):
+    """Upload a file to Devin."""
+    resp = attachments.upload_file(str(path))
+    console.print(f"[green]Uploaded:[/green] {resp}")
+
+@app.command("list-knowledge")
+@handle_api_error
+def list_knowledge_top_cmd():
+    """List knowledge notes (alias for: devin knowledge list)."""
+    resp = knowledge.list_knowledge()
+    items = resp.get("notes", resp.get("knowledge", []))
+    table = Table(title="Knowledge Base")
+    table.add_column("ID", style="cyan")
+    table.add_column("Title")
+    for item in items:
+        table.add_row(item.get("id"), item.get("title") or item.get("name"))
+    console.print(table)
+
+@app.command("attach")
+@handle_api_error
+def attach_cmd(
+    file: Path = typer.Argument(..., help="Context file to upload and attach"),
+    prompt: str = typer.Argument(..., help="Task prompt to include with the attachment"),
+    title: Optional[str] = typer.Option(None, "--title", "-t"),
+    wait: bool = typer.Option(False, "--wait", "-w"),
+    interval: int = typer.Option(5, "--interval"),
+):
+    """Upload a context file and start a session using it."""
+    with console.status("[bold green]Uploading file...[/bold green]"):
+        upload_resp = attachments.upload_file(str(file))
+    url = upload_resp.strip('"') if isinstance(upload_resp, str) else str(upload_resp)
+    console.print(f"[green]Uploaded:[/green] {url}")
+    full_prompt = f"{prompt}\n\nATTACHMENT: \"{url}\""
+    create_session_cmd(prompt=full_prompt, file=None, title=title, org=None, max_acu=None,
+                       advanced_mode=None, force=False, wait=wait, interval=interval)
+
+@app.command("update-tags")
+@handle_api_error
+def update_tags_cmd(
+    session_id: Optional[str] = typer.Argument(None),
+    tags: List[str] = typer.Option(..., "--tag", "-t", help="Tags to set (can repeat)"),
+):
+    """Update tags for a session."""
+    sid = session_id or get_current_session_id()
+    sessions.update_session_tags(sid, tags)
+    console.print(f"[green]Tags updated for session {sid}.[/green]")
+
+@app.command("history")
+def history_cmd():
+    """Show the locally cached current session ID."""
+    sid = config.current_session_id
+    if sid:
+        console.print(f"Current local session: [cyan]{sid}[/cyan]")
+    else:
+        console.print("No current local session.")
+
+@app.command("messages")
+@handle_api_error
+def messages_cmd(
+    session_id: Optional[str] = typer.Argument(None),
+):
+    """Show conversation history for a session."""
+    sid = session_id or get_current_session_id()
+    resp = sessions.get_session_messages(sid)
+    msgs = resp.get("messages", [])
+    console.print(f"[bold]Conversation for Session {sid}[/bold]")
+    console.print("─" * 40)
+    for m in msgs:
+        role = m.get("role", "unknown")
+        content = m.get("message", "") or m.get("content", "")
+        console.print(f"[bold cyan]{role}:[/bold cyan] {content}")
+
+@app.command("get-session")
+@handle_api_error
+def get_session_top_cmd(
+    session_id: Optional[str] = typer.Argument(None),
+):
+    """Get details for a session."""
+    sid = session_id or get_current_session_id()
+    resp = sessions.get_session(sid)
+    console.print(Panel(
+        f"[bold]Status:[/bold] {resp.get('status_enum')}\n"
+        f"[bold]URL:[/bold] {resp.get('url')}\n"
+        f"[bold]Created:[/bold] {resp.get('created_at')}",
+        title=f"Session {sid}"
+    ))
+    if "structured_output" in resp:
+        console.print("[bold]Structured Output:[/bold]")
+        console.print(json.dumps(resp["structured_output"], indent=2))
+
+@app.command("update-knowledge")
+@handle_api_error
+def update_knowledge_cmd(
+    knowledge_id: str = typer.Argument(...),
+    name: Optional[str] = typer.Option(None, "--name"),
+    body: Optional[str] = typer.Option(None, "--body"),
+    trigger: Optional[str] = typer.Option(None, "--trigger"),
+):
+    """Update an existing knowledge entry."""
+    knowledge.update_knowledge(knowledge_id, title=name, body=body)
+    console.print(f"[green]Knowledge {knowledge_id} updated.[/green]")
+
+@app.command("update-playbook")
+@handle_api_error
+def update_playbook_top_cmd(
+    playbook_id: str = typer.Argument(...),
+    title: Optional[str] = typer.Option(None, "--title"),
+    body: Optional[str] = typer.Option(None, "--body"),
+    macro: Optional[str] = typer.Option(None, "--macro"),
+):
+    """Update an existing playbook."""
+    playbooks.update_playbook(playbook_id, title=title or "", body=body, macro=macro)
+    console.print(f"[green]Playbook {playbook_id} updated.[/green]")
+
+@app.command("delete-playbook")
+@handle_api_error
+def delete_playbook_top_cmd(playbook_id: str = typer.Argument(...)):
+    """Delete a playbook."""
+    if typer.confirm(f"Delete playbook {playbook_id}?"):
+        playbooks.delete_playbook(playbook_id)
+        console.print(f"[green]Playbook {playbook_id} deleted.[/green]")
+
+@app.command("list-secrets")
+@handle_api_error
+def list_secrets_top_cmd():
+    """List all organization secrets."""
+    resp = secrets.list_secrets()
+    items = resp if isinstance(resp, list) else resp.get("secrets", resp.get("items", []))
+    table = Table(title="Organization Secrets")
+    table.add_column("ID", style="cyan")
+    table.add_column("Name")
+    for item in items:
+        if isinstance(item, dict):
+            table.add_row(item.get("id", ""), item.get("name", ""))
+    console.print(table)
+
+@app.command("delete-secret")
+@handle_api_error
+def delete_secret_top_cmd(secret_id: str = typer.Argument(...)):
+    """Delete an organization secret."""
+    if typer.confirm(f"Delete secret {secret_id}?"):
+        secrets.delete_secret(secret_id)
+        console.print(f"[green]Secret {secret_id} deleted.[/green]")
+
+@app.command("chain")
+@handle_api_error
+def chain_cmd(
+    prompt: Optional[str] = typer.Argument(None, help="Initial prompt"),
+    playbooks_arg: Optional[str] = typer.Option(None, "--playbooks", help="Comma-separated playbook IDs"),
+    file: Optional[Path] = typer.Option(None, "--file", help="Workflow YAML file"),
+):
+    """(Beta) Orchestrate a sequential chain of playbooks.
+
+    Method 1 \u2014 Inline:
+        devin chain "Refactor utils.py" --playbooks "lint_check,unit_tests"
+
+    Method 2 \u2014 YAML workflow file:
+        devin chain --file workflow.yml
+    """
+    steps = []
+
+    if file:
+        if not file.exists():
+            console.print(f"[bold red]Error:[/bold red] File not found: {file}")
+            raise typer.Exit(1)
+        try:
+            workflow = yaml.safe_load(file.read_text())
+            steps = workflow.get("steps", [])
+        except Exception as e:
+            console.print(f"[bold red]Error parsing YAML:[/bold red] {e}")
+            raise typer.Exit(1)
+    elif prompt and playbooks_arg:
+        pb_list = [p.strip() for p in playbooks_arg.split(",")]
+        for i, pb in enumerate(pb_list):
+            step_prompt = prompt if i == 0 else f"Execute playbook: {pb}"
+            steps.append({"prompt": step_prompt, "playbook": pb})
+    else:
+        console.print("[bold red]Error:[/bold red] Provide --file OR (prompt + --playbooks)")
+        raise typer.Exit(1)
+
+    current_sid = None
+    for i, step in enumerate(steps):
+        step_prompt = step.get("prompt", "")
+        step_pb = step.get("playbook")
+        console.print(f"[bold cyan]Step {i+1}/{len(steps)}:[/bold cyan] Playbook={step_pb}")
+
+        if i == 0:
+            with console.status(f"Starting session..."):
+                resp = sessions.create_session(prompt=step_prompt, playbook_id=step_pb)
+                current_sid = resp["session_id"]
+                config.current_session_id = current_sid
+                console.print(f"[green]Session started:[/green] {current_sid}")
+        else:
+            sessions.send_message(current_sid, f"{step_prompt} (Playbook: {step_pb})")
+
+        backoff = 2
+        while True:
+            resp = sessions.get_session(current_sid)
+            status = resp.get("status_enum", "")
+            if status in {"blocked", "finished", "stopped", "error"}:
+                console.print(f"Step {i+1} done (status: {status}).")
+                break
+            time.sleep(min(backoff, 10))
+            backoff = min(backoff * 1.5, 10)
+
+    console.print("[bold green]Chain completed![/bold green]")
 
 if __name__ == "__main__":
     app()
