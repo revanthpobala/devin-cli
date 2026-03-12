@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.4] - 2026-03-11
+### Fixed
+- Fixed `NameError` crash in `v1/knowledge.py` (`macro` referenced but never declared as a parameter).
+- Fixed typo in advanced mode session output message.
+- Removed stale inline comments from `client.py` and `cli.py`.
+
+### Changed
+- Updated README with dedicated sections for v1 legacy API support, multi-profile management, session deduplication, and environment variable reference.
+
 ## [1.1.3] - 2026-03-11
 ### Fixed
 - `repos list` now resolves blank Path column by trying `repository_path`, `path`, and `name` keys from the API response.
