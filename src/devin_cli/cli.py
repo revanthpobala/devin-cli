@@ -175,7 +175,6 @@ def create_session_cmd(
     if existing_sid and not force:
         console.print(f"[bold yellow]Duplicate Detected:[/bold yellow] You recently created a session with this exact prompt.")
         console.print(f"Existing Session ID: [bold cyan]{existing_sid}[/bold cyan]")
-        import typer
         if not typer.confirm("Are you sure you want to create a duplicate session?"):
             console.print("Session creation cancelled. Use the existing session ID above to resume.")
             raise typer.Exit()
@@ -194,7 +193,6 @@ def create_session_cmd(
             console.print(f"[bold yellow]Advanced Mode Authorization Required![/bold yellow]")
             console.print(f"Please complete verify the advanced mode setup in your browser:")
             console.print(f"[bold cyan]{adv_url}[/bold cyan]")
-            import typer
             if typer.confirm("Open browser now?"):
                 import webbrowser
                 webbrowser.open(adv_url)
@@ -388,7 +386,6 @@ def update_playbook_cmd(
     body_bytes = len(body.encode('utf-8')) if body else 0
     if body_bytes > 500 * 1024:
         console.print(f"[bold yellow]Warning:[/bold yellow] Playbook body is {body_bytes / 1024:.1f}KB. Devin API may reject payloads > 500KB.")
-        import typer
         if not typer.confirm("Attempt to send anyway?"):
             raise typer.Exit()
             
@@ -408,7 +405,6 @@ def create_playbook_cmd(
     body_bytes = len(body.encode('utf-8')) if body else 0
     if body_bytes > 500 * 1024:
         console.print(f"[bold yellow]Warning:[/bold yellow] Playbook body is {body_bytes / 1024:.1f}KB. Devin API may reject payloads > 500KB.")
-        import typer
         if not typer.confirm("Attempt to send anyway?"):
             raise typer.Exit()
             
