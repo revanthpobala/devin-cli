@@ -299,14 +299,25 @@ def session_cost_cmd(
 @session_app.command("message")
 @handle_api_error
 def send_message_cmd(
-    text: str = typer.Argument(...),
+    text: Optional[str] = typer.Argument(None, help="Message text"),
+    file: Optional[Path] = typer.Option(None, "--file", "-f", help="Read message from file"),
     session_id: Optional[str] = typer.Option(None, "--id"),
     org: Optional[str] = typer.Option(None, "--org"),
 ):
     """Send a message to a session."""
     if org: config.temporary_org_id = org
     sid = session_id or get_current_session_id()
-    sessions.send_message(sid, text)
+    if file:
+        if not file.exists():
+            console.print(f"[bold red]Error:[/bold red] File not found: {file}")
+            raise typer.Exit(1)
+        msg_text = file.read_text()
+    elif text:
+        msg_text = text
+    else:
+        console.print("[bold red]Error:[/bold red] Provide message text or --file")
+        raise typer.Exit(1)
+    sessions.send_message(sid, msg_text)
     console.print(f"[green]Message sent to {sid}[/green]")
 
 @session_app.command("messages")
@@ -730,12 +741,23 @@ def watch_cmd(
 @app.command("message")
 @handle_api_error
 def message_cmd(
-    text: str = typer.Argument(..., help="Message to send"),
+    text: Optional[str] = typer.Argument(None, help="Message to send"),
+    file: Optional[Path] = typer.Option(None, "--file", "-f", help="Read message from file"),
     session_id: Optional[str] = typer.Option(None, "--id"),
 ):
     """Send a message to the active session."""
     sid = session_id or get_current_session_id()
-    sessions.send_message(sid, text)
+    if file:
+        if not file.exists():
+            console.print(f"[bold red]Error:[/bold red] File not found: {file}")
+            raise typer.Exit(1)
+        msg_text = file.read_text()
+    elif text:
+        msg_text = text
+    else:
+        console.print("[bold red]Error:[/bold red] Provide message text or --file")
+        raise typer.Exit(1)
+    sessions.send_message(sid, msg_text)
     console.print(f"[green]Message sent to {sid}[/green]")
 
 @app.command("terminate")
