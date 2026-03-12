@@ -80,7 +80,6 @@ class BaseClient:
             except ValueError:
                 return response.text
         
-        # If it's not JSON, it might be an attachment or raw text
         if any(t in content_type for t in ["image/", "application/octet-stream", "application/pdf"]):
             return response.content
             
@@ -93,12 +92,10 @@ class BaseClient:
         self._ensure_token()
         url = self._format_url(endpoint)
         
-        # Merge headers if needed, but usually self.headers is enough
         headers = self.headers.copy()
         if "headers" in kwargs:
             headers.update(kwargs.pop("headers"))
 
-        # Handle file uploads (remove Content-Type)
         if "files" in kwargs:
             headers.pop("Content-Type", None)
 

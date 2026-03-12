@@ -129,7 +129,6 @@ def configure(
     if profile:
         config.active_profile = profile
         
-    # Validation based on v3 requirements
     if not (token.startswith("apk_") or token.startswith("cog_")):
         console.print("[bold yellow]Warning:[/bold yellow] Token format might be outdated. v3 tokens usually start with 'apk_' or 'cog_'.")
     
@@ -191,7 +190,7 @@ def create_session_cmd(
         if "advanced_mode_url" in resp:
             adv_url = resp["advanced_mode_url"]
             console.print(f"[bold yellow]Advanced Mode Authorization Required![/bold yellow]")
-            console.print(f"Please complete verify the advanced mode setup in your browser:")
+            console.print(f"Please complete the advanced mode setup in your browser:")
             console.print(f"[bold cyan]{adv_url}[/bold cyan]")
             if typer.confirm("Open browser now?"):
                 import webbrowser

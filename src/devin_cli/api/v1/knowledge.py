@@ -18,8 +18,6 @@ def create_knowledge(
         "body": body,
         "trigger_description": trigger_description or ""
     }
-    if macro:
-        data["macro"] = macro
     if parent_folder_id:
         data["parent_folder_id"] = parent_folder_id
     if pinned_repo:
