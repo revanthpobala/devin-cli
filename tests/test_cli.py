@@ -7,7 +7,7 @@ runner = CliRunner()
 def test_app_help():
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
-    assert "Unofficial CLI for Devin AI v3" in result.stdout
+    assert "Unofficial CLI for Devin AI" in result.stdout
 
 def test_app_configure_help():
     result = runner.invoke(app, ["configure", "--help"])

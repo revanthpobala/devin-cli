@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.3] - 2026-03-11
+### Fixed
+- `repos list` now resolves blank Path column by trying `repository_path`, `path`, and `name` keys from the API response.
+- `secrets list` no longer crashes when the API returns a raw list instead of a dict with a key.
+- `sessions cost <id>` now pulls cost data from the org-scoped `get_session` endpoint instead of the enterprise-only consumption path.
+- `sessions insights` on v1 now displays a readable error with a hint to switch to v3 instead of a confusing JSON blob.
+- `--json` flag added to `repos list` and `secrets list` for raw programmatic output.
+
 ## [1.1.2] - 2026-03-11
 ### Fixed
 - **Critical Profile Bug**: Stopped `cli.py` from statically overriding the active user profile back to `"default"` on every boot unless the `--profile` flag is explicitly passed over the terminal.

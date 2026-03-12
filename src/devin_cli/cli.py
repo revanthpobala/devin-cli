@@ -255,7 +255,11 @@ def session_insights_cmd(
     if org: config.temporary_org_id = org
     sid = session_id or get_current_session_id()
     resp = sessions.get_session_insights(sid)
-    console.print(Panel(json.dumps(resp, indent=2), title=f"Insights for {sid}"))
+    if isinstance(resp, dict) and "error" in resp:
+        console.print(f"[bold yellow]Note:[/bold yellow] {resp['error']}")
+        console.print("Tip: Switch to v3 with [bold cyan]devin configure[/bold cyan] or use [bold cyan]--profile [v3-profile][/bold cyan]")
+    else:
+        console.print(Panel(json.dumps(resp, indent=2), title=f"Insights for {sid}"))
 
 @session_app.command("cost")
 @handle_api_error
@@ -266,10 +270,12 @@ def session_cost_cmd(
     """View ACU consumption."""
     if org: config.temporary_org_id = org
     if session_id:
-        resp = consumption.get_session_consumption(session_id)
+        resp = sessions.get_session(session_id)
+        cost_data = {"session_id": resp.get("session_id"), "status": resp.get("status_enum"), "acu_used": resp.get("acu_used")}
+        console.print(Panel(json.dumps(cost_data, indent=2), title=f"Session Cost: {session_id}"))
     else:
         resp = consumption.get_daily_consumption_breakdown()
-    console.print(Panel(json.dumps(resp, indent=2), title="Consumption Data"))
+        console.print(Panel(json.dumps(resp, indent=2), title="Daily Consumption"))
 
 @session_app.command("message")
 @handle_api_error
@@ -425,15 +431,29 @@ def delete_playbook_cmd(
 # --- Secrets ---
 @secret_app.command("list")
 @handle_api_error
-def list_secrets_cmd(org: Optional[str] = typer.Option(None, "--org")):
+def list_secrets_cmd(
+    org: Optional[str] = typer.Option(None, "--org"),
+    json_output: bool = typer.Option(False, "--json"),
+):
     """List organization secrets."""
     if org: config.temporary_org_id = org
     resp = secrets.list_secrets()
+    if isinstance(resp, dict):
+        items = resp.get("secrets", resp.get("items", []))
+    elif isinstance(resp, list):
+        items = resp
+    else:
+        console.print(f"[yellow]Unexpected response format: {type(resp).__name__}[/yellow]")
+        items = []
+    if json_output:
+        console.print(json.dumps(items, indent=2))
+        return
     table = Table(title="Secrets")
     table.add_column("ID", style="cyan")
     table.add_column("Name")
-    for item in resp:
-        table.add_row(item.get("id"), item.get("name"))
+    for item in items:
+        if isinstance(item, dict):
+            table.add_row(item.get("id"), item.get("name"))
     console.print(table)
 
 @secret_app.command("delete")
@@ -492,16 +512,23 @@ def create_schedule_cmd(
 # --- Repositories ---
 @repo_app.command("list")
 @handle_api_error
-def list_repos_cmd(org: Optional[str] = typer.Option(None, "--org")):
+def list_repos_cmd(
+    org: Optional[str] = typer.Option(None, "--org"),
+    json_output: bool = typer.Option(False, "--json"),
+):
     """List repositories indexed for Devin."""
     if org: config.temporary_org_id = org
     resp = repositories.list_repositories()
-    items = resp.get("items", [])
+    items = resp.get("repositories", resp.get("items", []))
+    if json_output:
+        console.print(json.dumps(items, indent=2))
+        return
     table = Table(title="Repositories")
     table.add_column("Path", style="cyan")
     table.add_column("Indexed", style="green")
     for item in items:
-        table.add_row(item.get("repository_path"), "Yes" if item.get("is_indexed") else "No")
+        path = item.get("repository_path") or item.get("path") or item.get("name", "")
+        table.add_row(path, "Yes" if item.get("is_indexed") else "No")
     console.print(table)
 
 @repo_app.command("index")
