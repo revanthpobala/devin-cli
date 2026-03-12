@@ -155,13 +155,38 @@ def create_session_cmd(
     title: Optional[str] = typer.Option(None, "--title", "-t", help="Custom session title"),
     org: Optional[str] = typer.Option(None, "--org", help="Override organization ID"),
     max_acu: Optional[int] = typer.Option(None, "--max-acu", help="Maximum ACU limit"),
-    advanced_mode: Optional[str] = typer.Option(None, "--advanced-mode", help="Enable advanced mode (e.g. CLI, browser) for the session"),
+    advanced_mode: Optional[str] = typer.Option(None, "--advanced-mode", help="Advanced mode type: 'cli' or 'browser' (v3 only)"),
+    playbook_id: Optional[str] = typer.Option(None, "--playbook-id", help="Playbook ID to apply (v3 only)"),
+    tags: Optional[List[str]] = typer.Option(None, "--tag", help="Session tags (repeatable)"),
+    repos: Optional[List[str]] = typer.Option(None, "--repo", help="Repository URLs to attach (v3 only, repeatable)"),
+    knowledge_ids: Optional[List[str]] = typer.Option(None, "--knowledge-id", help="Knowledge IDs to attach (repeatable)"),
+    secret_ids: Optional[List[str]] = typer.Option(None, "--secret-id", help="Secret IDs to inject (v3 only, repeatable)"),
+    session_links: Optional[List[str]] = typer.Option(None, "--session-link", help="Session URLs to link as context (v3 only, repeatable)"),
+    attachment_urls: Optional[List[str]] = typer.Option(None, "--attachment-url", help="Attachment URLs to attach (v3 only, repeatable)"),
+    create_as_user_id: Optional[str] = typer.Option(None, "--create-as-user-id", help="Enterprise: create session on behalf of this user ID (v3 only)"),
     force: bool = typer.Option(False, "--force", help="Force creation even if duplicate prompt is detected"),
     wait: bool = typer.Option(False, "--wait", "-w", help="Block until the session reaches a terminal status"),
     interval: int = typer.Option(5, "--interval", help="Polling interval in seconds when --wait is used"),
 ):
     """Create a new Devin session."""
     if org: config.temporary_org_id = org
+
+    api_ver = config.api_version
+    console.print(f"[dim]Using profile: {config.active_profile or 'default'} ({api_ver})[/dim]")
+
+    v3_only_used = [x for x, v in [
+        ("--advanced-mode", advanced_mode),
+        ("--playbook-id", playbook_id),
+        ("--repos", repos),
+        ("--secret-ids", secret_ids),
+        ("--session-links", session_links),
+        ("--attachment-urls", attachment_urls),
+        ("--create-as-user-id", create_as_user_id),
+    ] if v]
+    if api_ver == "v1" and v3_only_used:
+        console.print(f"[bold yellow]Warning:[/bold yellow] The following flags are v3-only and will be ignored on a v1 profile: {', '.join(v3_only_used)}")
+        console.print("  Run [bold cyan]devin configure[/bold cyan] to switch to a v3 profile.")
+
     if file:
         prompt_text = file.read_text()
     elif prompt:
@@ -169,10 +194,10 @@ def create_session_cmd(
     else:
         console.print("[bold red]Error:[/bold red] Must provide prompt or --file")
         raise typer.Exit(1)
-        
+
     prompt_hash = hashlib.sha256(prompt_text.encode('utf-8')).hexdigest()
     existing_sid = config.get_session_by_prompt_hash(prompt_hash)
-    
+
     if existing_sid and not force:
         console.print(f"[bold yellow]Duplicate Detected:[/bold yellow] You recently created a session with this exact prompt.")
         console.print(f"Existing Session ID: [bold cyan]{existing_sid}[/bold cyan]")
@@ -182,13 +207,21 @@ def create_session_cmd(
 
     with console.status("[bold green]Creating session...[/bold green]"):
         resp = sessions.create_session(
-            prompt=prompt_text, 
-            title=title, 
+            prompt=prompt_text,
+            title=title,
             max_acu_limit=max_acu,
-            advanced_mode=advanced_mode
+            advanced_mode=advanced_mode,
+            playbook_id=playbook_id,
+            tags=tags or None,
+            repos=repos or None,
+            knowledge_ids=knowledge_ids or None,
+            secret_ids=secret_ids or None,
+            session_links=session_links or None,
+            attachment_urls=attachment_urls or None,
+            create_as_user_id=create_as_user_id,
         )
         sid = resp.get("session_id")
-        
+
         if "advanced_mode_url" in resp:
             adv_url = resp["advanced_mode_url"]
             console.print(f"[bold yellow]Advanced Mode Authorization Required![/bold yellow]")
@@ -197,7 +230,7 @@ def create_session_cmd(
             if typer.confirm("Open browser now?"):
                 import webbrowser
                 webbrowser.open(adv_url)
-                
+
         if sid:
             config.current_session_id = sid
             config.save_prompt_hash(prompt_hash, sid)
@@ -218,6 +251,7 @@ def create_session_cmd(
                             break
         else:
             console.print("[yellow]Session created, but no ID returned immediately (awaiting advanced mode setup).[/yellow]")
+
 
 @session_app.command("list")
 @handle_api_error

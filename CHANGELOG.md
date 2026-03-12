@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-03-11
+### Added
+- `sessions create` / `create-session` now exposes all 8 previously missing v3 API parameters: `--playbook-id`, `--tag`, `--repo`, `--knowledge-id`, `--secret-id`, `--session-link`, `--attachment-url`, `--create-as-user-id`.
+- Profile feedback on session create: prints which profile and API version is being used.
+- Explicit warning when v3-only flags (`--advanced-mode`, `--playbook-id`, `--repo`, `--secret-id`, `--session-link`, `--attachment-url`, `--create-as-user-id`) are passed on a v1 profile — instead of silently ignored.
+### Fixed
+- Removed `**kwargs` anti-pattern from `v1/sessions.create_session`. Typos in keyword args now raise `TypeError` instead of silently vanishing.
+- v3-only params added as explicit no-ops in v1 `create_session` so the shared CLI call site works without `TypeError`.
+
 ## [1.1.9] - 2026-03-11
 ### Fixed
 - `devin watch` terminal status message was printed inside a `Live` context, causing output corruption. Now printed after the `Live` block exits.

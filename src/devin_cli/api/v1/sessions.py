@@ -1,7 +1,7 @@
 from typing import List, Optional
 from devin_cli.api.client import client
 
-def list_sessions(limit: int = 100, offset: int = 0, tags: List[str] = None):
+def list_sessions(limit: int = 100, offset: int = 0, tags: Optional[List[str]] = None):
     params = {"limit": limit, "offset": offset}
     if tags:
         params["tags"] = tags
@@ -10,21 +10,25 @@ def list_sessions(limit: int = 100, offset: int = 0, tags: List[str] = None):
 def create_session(
     prompt: str,
     idempotent: bool = False,
-    snapshot_id: str = None,
-    playbook_id: str = None,
+    snapshot_id: Optional[str] = None,
+    playbook_id: Optional[str] = None,
     unlisted: bool = False,
-    tags: List[str] = None,
-    session_secrets: List[dict] = None,
+    tags: Optional[List[str]] = None,
+    session_secrets: Optional[List[dict]] = None,
     title: Optional[str] = None,
     knowledge_ids: Optional[List[str]] = None,
     secret_ids: Optional[List[str]] = None,
     max_acu_limit: Optional[int] = None,
-    **kwargs
+    advanced_mode: Optional[str] = None,
+    repos: Optional[List[str]] = None,
+    session_links: Optional[List[str]] = None,
+    attachment_urls: Optional[List[str]] = None,
+    create_as_user_id: Optional[str] = None,
 ):
     data = {
         "prompt": prompt,
         "idempotent": idempotent,
-        "unlisted": unlisted
+        "unlisted": unlisted,
     }
     if snapshot_id:
         data["snapshot_id"] = snapshot_id
@@ -42,7 +46,7 @@ def create_session(
         data["secret_ids"] = secret_ids
     if max_acu_limit:
         data["max_acu_limit"] = max_acu_limit
-        
+
     return client.post("sessions", json=data)
 
 def get_session(session_id: str):
