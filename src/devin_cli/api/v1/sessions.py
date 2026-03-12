@@ -25,6 +25,8 @@ def create_session(
     attachment_urls: Optional[List[str]] = None,
     create_as_user_id: Optional[str] = None,
     child_playbook_id: Optional[str] = None,
+    bypass_approval: bool = False,
+    structured_output_schema: Optional[str] = None,
 ):
     data = {
         "prompt": prompt,

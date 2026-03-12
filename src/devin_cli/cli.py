@@ -165,6 +165,8 @@ def create_session_cmd(
     session_links: Optional[List[str]] = typer.Option(None, "--session-link", help="Session URLs to link as context (v3 only, repeatable)"),
     attachment_urls: Optional[List[str]] = typer.Option(None, "--attachment-url", help="Attachment URLs to attach (v3 only, repeatable)"),
     create_as_user_id: Optional[str] = typer.Option(None, "--create-as-user-id", help="Enterprise: create session on behalf of this user ID (v3 only)"),
+    bypass_approval: bool = typer.Option(False, "--bypass-approval", help="Skip UI approval step — child sessions start immediately (v3 only)"),
+    structured_output_schema: Optional[str] = typer.Option(None, "--structured-output-schema", help="JSON schema string for structured response output (v3 only)"),
     force: bool = typer.Option(False, "--force", help="Force creation even if duplicate prompt is detected"),
     wait: bool = typer.Option(False, "--wait", "-w", help="Block until the session reaches a terminal status"),
     interval: int = typer.Option(5, "--interval", help="Polling interval in seconds when --wait is used"),
@@ -178,11 +180,14 @@ def create_session_cmd(
     v3_only_used = [x for x, v in [
         ("--advanced-mode", advanced_mode),
         ("--playbook-id", playbook_id),
+        ("--child-playbook-id", child_playbook_id),
         ("--repos", repos),
         ("--secret-ids", secret_ids),
         ("--session-links", session_links),
         ("--attachment-urls", attachment_urls),
         ("--create-as-user-id", create_as_user_id),
+        ("--bypass-approval", bypass_approval or None),
+        ("--structured-output-schema", structured_output_schema),
     ] if v]
     if api_ver == "v1" and v3_only_used:
         console.print(f"[bold yellow]Warning:[/bold yellow] The following flags are v3-only and will be ignored on a v1 profile: {', '.join(v3_only_used)}")
@@ -221,6 +226,8 @@ def create_session_cmd(
             session_links=session_links or None,
             attachment_urls=attachment_urls or None,
             create_as_user_id=create_as_user_id,
+            bypass_approval=bypass_approval,
+            structured_output_schema=structured_output_schema,
         )
         sid = resp.get("session_id")
 

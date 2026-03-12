@@ -23,6 +23,7 @@ def create_session(
     tags: Optional[List[str]] = None,
     title: Optional[str] = None,
     create_as_user_id: Optional[str] = None,
+    structured_output_schema: Optional[str] = None,
 ):
     data = {
         "prompt": prompt,
@@ -54,7 +55,9 @@ def create_session(
         data["title"] = title
     if create_as_user_id:
         data["create_as_user_id"] = create_as_user_id
-        
+    if structured_output_schema:
+        data["structured_output_schema"] = structured_output_schema
+
     return client.post("sessions", json=data)
 
 def get_session(session_id: str):
