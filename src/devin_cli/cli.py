@@ -268,14 +268,14 @@ def session_cost_cmd(
     if org: config.temporary_org_id = org
     if session_id:
         resp = sessions.get_session(session_id)
-        acu_used = resp.get("acu_used")
+        acus = resp.get("acus_consumed") or resp.get("acu_used")
         cost_data = {
             "session_id": resp.get("session_id"),
             "status": resp.get("status_enum"),
-            "acu_used": acu_used,
+            "acus_consumed": acus,
         }
         console.print(Panel(json.dumps(cost_data, indent=2), title=f"Session Cost: {session_id}"))
-        if acu_used is None:
+        if acus is None:
             console.print("[yellow]ACU data unavailable — this may be a v1 API session or a service token without cost visibility.[/yellow]")
     else:
         resp = consumption.get_daily_consumption_breakdown()
@@ -535,13 +535,20 @@ def list_repos_cmd(
     table.add_column("Indexed", style="green")
     for item in items:
         path = (
-            item.get("repository_path")
+            item.get("repo_path")
+            or item.get("repository_path")
+            or item.get("repo_name")
             or item.get("full_name")
             or item.get("path")
             or item.get("name")
             or ""
         )
-        indexed = item.get("is_indexed") or item.get("indexed")
+        indexing_status = item.get("indexing_status") or {}
+        indexed = (
+            indexing_status.get("indexing_enabled")
+            or item.get("is_indexed")
+            or item.get("indexed")
+        )
         table.add_row(path, "Yes" if indexed else "No")
     console.print(table)
 

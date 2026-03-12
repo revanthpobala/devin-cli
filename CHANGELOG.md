@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.6] - 2026-03-11
+### Fixed
+- `repos list` now correctly reads `repo_path` (the actual v3beta1 API key) and resolves indexed state from `indexing_status.indexing_enabled`.
+- `sessions cost` now reads `acus_consumed` (the real v3 field name) with a fallback to `acu_used` for v1.
+
 ## [1.1.5] - 2026-03-11
 ### Fixed
 - `repos list` table now correctly resolves repository paths by handling direct list API responses and trying `repository_path`, `full_name`, `path`, and `name` keys in sequence.
