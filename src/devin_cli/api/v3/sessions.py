@@ -15,6 +15,7 @@ def create_session(
     knowledge_ids: Optional[List[str]] = None,
     max_acu_limit: Optional[int] = None,
     playbook_id: Optional[str] = None,
+    child_playbook_id: Optional[str] = None,
     repos: Optional[List[str]] = None,
     secret_ids: Optional[List[str]] = None,
     session_links: Optional[List[str]] = None,
@@ -37,6 +38,8 @@ def create_session(
         data["max_acu_limit"] = max_acu_limit
     if playbook_id:
         data["playbook_id"] = playbook_id
+    if child_playbook_id:
+        data["child_playbook_id"] = child_playbook_id
     if repos:
         data["repos"] = repos
     if secret_ids:
