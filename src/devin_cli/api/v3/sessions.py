@@ -70,11 +70,9 @@ def get_session_tags(session_id: str):
     return client.get(f"sessions/{session_id}/tags")
 
 def update_session_tags(session_id: str, tags: List[str]):
-    # v3 PUT replaces tags
     return client.put(f"sessions/{session_id}/tags", json={"tags": tags})
 
 def append_session_tags(session_id: str, tags: List[str]):
-    # v3 POST appends tags
     return client.post(f"sessions/{session_id}/tags", json={"tags": tags})
 
 def terminate_session(session_id: str):

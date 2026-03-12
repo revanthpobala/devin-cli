@@ -331,12 +331,12 @@ def list_knowledge_cmd(org: Optional[str] = typer.Option(None, "--org")):
     """List knowledge notes."""
     if org: config.temporary_org_id = org
     resp = knowledge.list_knowledge()
-    items = resp.get("knowledge", [])
+    items = resp.get("notes", resp.get("knowledge", []))
     table = Table(title="Knowledge Base")
     table.add_column("ID", style="cyan")
     table.add_column("Name")
     for item in items:
-        table.add_row(item.get("id"), item.get("name"))
+        table.add_row(item.get("id"), item.get("title") or item.get("name"))
     console.print(table)
 
 @knowledge_app.command("create")
@@ -489,7 +489,7 @@ def list_schedules_cmd(org: Optional[str] = typer.Option(None, "--org")):
     """List recurring schedules."""
     if org: config.temporary_org_id = org
     resp = schedules.list_schedules()
-    items = resp.get("items", [])
+    items = resp.get("schedules", resp.get("items", []))
     table = Table(title="Schedules")
     table.add_column("ID", style="cyan")
     table.add_column("Title")

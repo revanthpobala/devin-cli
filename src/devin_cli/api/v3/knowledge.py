@@ -7,8 +7,6 @@ def list_knowledge():
 def create_knowledge(
     title: str,
     body: str,
-    # v3 uses title/body, v1 used name/body/trigger_description
-    # We'll map them for compatibility if possible, but v3 is primary
 ):
     data = {
         "title": title,

@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.7] - 2026-03-11
+### Fixed
+- `knowledge list` now correctly reads `notes` key from the v3 `knowledge/notes` endpoint, with `knowledge` as fallback. Also reads `title` in addition to `name` for display.
+- `schedules list` now correctly reads `schedules` key from the v3 response, with `items` as fallback.
+
 ## [1.1.6] - 2026-03-11
 ### Fixed
 - `repos list` now correctly reads `repo_path` (the actual v3beta1 API key) and resolves indexed state from `indexing_status.indexing_enabled`.
