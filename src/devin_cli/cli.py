@@ -728,7 +728,7 @@ def watch_session_cmd(
     if org: config.temporary_org_id = org
     sid = session_id or get_current_session_id()
 
-    terminal_statuses = {"stopped", "finished", "error", "cancelled", "failed", "blocked"}
+    terminal_statuses = {"stopped", "finished", "error", "cancelled", "failed"}
     backoff = interval
 
     def build_status_panel(resp: dict) -> Panel:

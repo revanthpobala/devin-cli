@@ -45,49 +45,208 @@ devin configure
 
 ### 3. Your First Session
 ```bash
-devin sessions create "Identify and fix the race condition in our Redis cache layer"
+devin create-session "Identify and fix the race condition in our Redis cache layer"
+devin watch
 ```
 
 ---
 
 ## 🔑 Multi-Profile Support
 
-The CLI supports multiple named profiles, letting you manage separate tokens, organizations, and API versions from a single install.
-
 ```bash
-# Configure your personal v3 profile
 devin configure --profile personal
-
-# Configure a service account profile
 devin configure --profile service
-
-# Switch profiles at runtime
 devin --profile service sessions list
 devin --profile personal sessions create "Fix the failing tests"
 ```
 
-Profiles are stored in `~/.config/devin/config.json` and are fully isolated — including their session deduplication caches and active session IDs.
+Profiles are stored in `~/.config/devin/config.json` — fully isolated including session caches and active session IDs.
 
 ---
 
-## 🕹 Legacy v1 API Support
+## 🤖 All Commands
 
-If you are running an older integration against the original Devin API v1 endpoints, the CLI acts as a transparent proxy and routes calls to the correct v1 URLs without breaking your v3 integrations.
+### Flat Commands (0.1.x style — quick access)
 
-**To configure a v1 profile:**
+| Command | Description |
+| :--- | :--- |
+| `devin create-session "<prompt>"` | Create a new session |
+| `devin watch` | Live-watch the active session |
+| `devin status` | One-liner status of active session |
+| `devin open` | Open active session URL in browser |
+| `devin message "<text>"` | Send a message to active session |
+| `devin message --file prompt.txt` | Send a message from file |
+| `devin terminate` | Terminate active session |
+| `devin list-sessions` | List recent sessions |
+| `devin upload <file>` | Upload a file to Devin |
+| `devin attach <file> "<prompt>"` | Upload file + start session with it |
+| `devin list-knowledge` | List knowledge notes |
+| `devin update-knowledge <id>` | Update a knowledge entry |
+| `devin update-tags` | Update tags on a session |
+| `devin history` | Show locally cached session ID |
+| `devin messages` | Show conversation history |
+| `devin get-session` | Show session details + structured output |
+| `devin update-playbook <id>` | Update a playbook |
+| `devin delete-playbook <id>` | Delete a playbook |
+| `devin list-secrets` | List organization secrets |
+| `devin delete-secret <id>` | Delete a secret |
+| `devin chain` | Sequential playbook orchestration |
+| `devin use <session_id>` | Switch active session |
+| `devin configure` | Configure API token and profile |
+
+### Sessions (`devin sessions <cmd>`)
+
+| Command | Key Flags | Description |
+| :--- | :--- | :--- |
+| `create` | see below | Create a session |
+| `list` | `--limit`, `--json` | List sessions |
+| `get` | `[session_id]` | Get session details |
+| `watch` | `--interval` | Live-watch with exponential backoff |
+| `message` | `[text]`, `--file` | Send message or file to session |
+| `messages` | `[session_id]` | Full conversation history |
+| `terminate` | `[session_id]` | Terminate a session |
+| `insights` | `[session_id]` | ACU / performance insights (v3) |
+| `cost` | `[session_id]` | ACU consumption |
+
+#### `sessions create` / `create-session` — Full Flag Reference
+
+| Flag | Type | Description |
+| :--- | :--- | :--- |
+| `[prompt]` | arg | Task prompt |
+| `--file`, `-f` | path | Read prompt from file |
+| `--title`, `-t` | str | Session title |
+| `--wait`, `-w` | flag | Block until session finishes |
+| `--interval` | int | Polling interval for `--wait` (default: 5s) |
+| `--max-acu` | int | ACU spend cap |
+| `--force` | flag | Skip duplicate detection |
+| `--advanced-mode` | str | `analyze` \| `create_playbook` \| `improve_playbook` \| `batch` \| `manage_knowledge` |
+| `--playbook-id` | str | Playbook to apply (v3) |
+| `--child-playbook-id` | str | Playbook for each sub-session in `batch` mode (v3) |
+| `--bypass-approval` | flag | Skip UI approval — child sessions start immediately (v3) |
+| `--tag` | str (repeatable) | Session tags |
+| `--repo` | str (repeatable) | Repo URLs to attach (v3) |
+| `--knowledge-id` | str (repeatable) | Knowledge IDs to inject |
+| `--secret-id` | str (repeatable) | Secret IDs to inject (v3) |
+| `--session-link` | str (repeatable) | Session URLs as context (v3) |
+| `--attachment-url` | str (repeatable) | Attachment URLs (v3) |
+| `--structured-output-schema` | str | JSON schema for structured response (v3) |
+| `--create-as-user-id` | str | Enterprise: impersonate a user (v3) |
+| `--org` | str | Override org ID |
+
+#### Full Batch Automation Example
 ```bash
-devin configure --profile legacy
-# When prompted for API Version, enter: v1
-# Set Base URL to: https://api.devin.ai/v1
+# No browser interaction required
+devin sessions create \
+  --advanced-mode batch \
+  --playbook-id <orchestrator-id> \
+  --child-playbook-id <worker-id> \
+  --bypass-approval \
+  "Process each file in the attached CSV"
 ```
 
-**To use the v1 profile:**
+### Knowledge (`devin knowledge <cmd>`)
+
+| Command | Description |
+| :--- | :--- |
+| `list` | List all knowledge notes |
+| `create` | Create a knowledge note |
+| `delete <id>` | Delete a knowledge note |
+
+### Playbooks (`devin playbooks <cmd>`)
+
+| Command | Description |
+| :--- | :--- |
+| `list` | List all playbooks |
+| `create` | Create a playbook |
+| `update <id>` | Update a playbook |
+| `delete <id>` | Delete a playbook |
+
+### Secrets (`devin secrets <cmd>`)
+
+| Command | Description |
+| :--- | :--- |
+| `list` | List organization secrets |
+| `create` | Create a secret |
+| `delete <id>` | Delete a secret |
+
+### Schedules (`devin schedules <cmd>`)
+
+| Command | Description |
+| :--- | :--- |
+| `list` | List schedules |
+| `create` | Create a CRON schedule |
+
+### Repositories (`devin repos <cmd>`)
+
+| Command | Description |
+| :--- | :--- |
+| `list` | List indexed repositories |
+| `index` | Force-index a repository |
+
+### Attachments (`devin attachments <cmd>`)
+
+| Command | Description |
+| :--- | :--- |
+| `upload <file>` | Upload a file |
+| `download <id>` | Download an attachment |
+
+### Enterprise (`devin enterprise <cmd>`)
+
+| Command | Description |
+| :--- | :--- |
+| `whoami` | Show current identity |
+| `list-orgs` | List accessible organizations |
+
+### Chain (`devin chain`)
+
+Orchestrate a sequential pipeline of playbooks:
+
 ```bash
-devin --profile legacy sessions create "Run the migration script"
-devin --profile legacy sessions list
+# Inline
+devin chain "Refactor utils.py" --playbooks "lint_check,unit_tests"
+
+# YAML workflow file
+devin chain --file workflow.yml
 ```
 
-**What works in v1:**
+---
+
+## 🛡 Session Deduplication
+
+The CLI caches a SHA-256 hash of your last 50 prompts per profile. Duplicate prompts are caught before wasting ACUs:
+
+```
+Duplicate Detected: You recently created a session with this exact prompt.
+Existing Session ID: abc123...
+Are you sure you want to create a duplicate session? [y/N]
+```
+
+Use `--force` to bypass.
+
+---
+
+## 📟 CI/CD Integration
+
+```yaml
+env:
+  DEVIN_API_TOKEN: ${{ secrets.DEVIN_API_TOKEN }}
+  DEVIN_ORG_ID: ${{ secrets.DEVIN_ORG_ID }}
+run: |
+  devin create-session "Review PR #${{ github.event.pull_request.number }}" --wait
+```
+
+**Environment variables:**
+
+| Variable | Description |
+| :--- | :--- |
+| `DEVIN_API_TOKEN` | API token (overrides config) |
+| `DEVIN_ORG_ID` | Organization ID |
+| `DEVIN_BASE_URL` | Override base URL |
+| `DEVIN_API_VERSION` | Set `v1` or `v3` without configuring |
+
+---
+
+## 🕹 v1 / v3 Profile Compatibility
 
 | Feature | v1 | v3 |
 | :--- | :---: | :---: |
@@ -96,84 +255,22 @@ devin --profile legacy sessions list
 | Playbooks (create, update, delete) | ✅ | ✅ |
 | Secrets (list, create, delete) | ✅ | ✅ |
 | Attachments (upload, download) | ✅ | ✅ |
+| Advanced Mode (`--advanced-mode`) | ⚠️ warned | ✅ |
+| Batch sessions (`--bypass-approval`) | ⚠️ warned | ✅ |
 | Session Insights | ❌ | ✅ |
 | Schedules | ❌ | ✅ |
 | Repositories | ❌ | ✅ |
 | Enterprise endpoints | ❌ | ✅ |
 
-> The help menu will show `(Legacy v1 API)` and `(v3 Only)` tags next to commands when a v1 profile is active.
-
----
-
-## 🛠 Command Reference
-
-Every sub-command supports the `--org` flag to override your active organization on the fly.
-
-| Category | Commands | Description |
-| :--- | :--- | :--- |
-| **Sessions** | `create`, `list`, `get`, `insights`, `cost`, `messages`, `message`, `terminate` | Core agent lifecycle and analytics. |
-| **Knowledge** | `list`, `create`, `delete` | Manage organizational context and AI memory. |
-| **Playbooks** | `list`, `create`, `update`, `delete` | Automate complex, multi-step agent workflows. |
-| **Secrets** | `list`, `create`, `delete` | Pass API keys and credentials to Devin sessions. |
-| **Schedules** | `list`, `create` | Schedule recurring autonomous tasks via CRON. |
-| **Repositories** | `list`, `index` | Force indexing of Git repositories for Devin context. |
-| **Attachments** | `upload`, `download` | Transfer context files seamlessly. |
-| **Enterprise** | `whoami`, `list-orgs` | Administrative identity discovery. |
-| **Global** | `configure`, `use` | CLI setup and active session management. |
-
-### Key Flags
-
-| Flag | Description |
-| :--- | :--- |
-| `--profile <name>` | Select a named configuration profile |
-| `--org <id>` | Override the active organization for a single command |
-| `--json` | Output raw JSON (available on `sessions list`, `repos list`, `secrets list`) |
-| `--force` | Skip duplicate session detection and create anyway |
-| `--advanced-mode` | Request an advanced mode session requiring browser auth |
-
----
-
-## 🛡 Session Deduplication
-
-The CLI caches a SHA-256 hash of your last 50 prompts per profile. If you attempt to launch a session with an identical prompt, the CLI halts and alerts you before wasting ACUs:
-
-```
-Duplicate Detected: You recently created a session with this exact prompt.
-Existing Session ID: abc123...
-Are you sure you want to create a duplicate session? [y/N]
-```
-
-Use `--force` to bypass this check.
-
----
-
-## 📟 CI/CD Integration
-
-```yaml
-# Example GitHub Action Step
-env:
-  DEVIN_API_TOKEN: ${{ secrets.DEVIN_API_TOKEN }}
-  DEVIN_ORG_ID: ${{ secrets.DEVIN_ORG_ID }}
-run: |
-  devin sessions create "Review PR #${{ github.event.pull_request.number }}"
-```
-
-**Supported environment variables:**
-
-| Variable | Description |
-| :--- | :--- |
-| `DEVIN_API_TOKEN` | Your API token (overrides config file) |
-| `DEVIN_ORG_ID` | Your organization ID |
-| `DEVIN_BASE_URL` | Override the default base URL |
-| `DEVIN_API_VERSION` | Set `v1` or `v3` without configuring |
+> v3-only flags are accepted but ignored on v1 profiles — the CLI prints a clear warning listing exactly which flags were dropped.
 
 ---
 
 ## ⚙️ Engineering Specs
 
-- **Architecture**: Full v3 API support (including `v3beta1` and `enterprise` endpoints) + v1 legacy proxy
-- **Config Storage**: `~/.config/devin/config.json`
-- **Platform Support**: Linux, macOS, WSL2
+- **Architecture**: Full v3 API support (`v3beta1` + `enterprise`) + v1 legacy proxy
+- **Config**: `~/.config/devin/config.json`
+- **Platform**: Linux, macOS, WSL2
 - **Python**: 3.9+
 
 ---
@@ -181,10 +278,7 @@ run: |
 ## 🧪 Developer Hub
 
 ```bash
-# Setup
 pip install -e ".[dev]"
-
-# Test Suite
 PYTHONPATH=src python3 -m pytest
 ```
 
