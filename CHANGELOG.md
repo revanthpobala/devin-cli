@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.9] - 2026-03-11
+### Fixed
+- `devin watch` terminal status message was printed inside a `Live` context, causing output corruption. Now printed after the `Live` block exits.
+- `update-playbook` was sending an empty string title when `--title` was not passed, overwriting the existing playbook title. Now only sends fields that are explicitly provided.
+- `chain` used bare `resp["session_id"]` key access which would raise `KeyError` on unexpected API responses. Now uses `.get()` with an explicit error guard.
+
 ## [1.1.8] - 2026-03-11
 ### Added
 - Restored all 0.1.x flat commands: `watch`, `status`, `open`, `message`, `terminate`, `list-sessions`, `create-session`, `upload`, `list-knowledge`, `attach`, `update-tags`, `history`, `messages`, `get-session`, `update-knowledge`, `update-playbook`, `delete-playbook`, `list-secrets`, `delete-secret`, `chain`.

@@ -719,13 +719,15 @@ def watch_session_cmd(
 
                 if resp.get("status_enum", "").lower() in terminal_statuses:
                     live.update(build_status_panel(resp))
-                    console.print(f"[bold green]Session {resp.get('status_enum')}![/bold green]")
                     break
 
                 time.sleep(min(backoff, 30))
                 backoff = min(backoff * 1.5, 30)
         except KeyboardInterrupt:
             console.print("\n[dim]Watch stopped.[/dim]")
+            return
+
+    console.print(f"[bold green]Session {resp.get('status_enum')}![/bold green]")
 
 # --- Flat top-level aliases (backward compat with 0.1.x command structure) ---
 
@@ -917,6 +919,16 @@ def update_playbook_top_cmd(
     macro: Optional[str] = typer.Option(None, "--macro"),
 ):
     """Update an existing playbook."""
+    data: dict = {}
+    if title is not None:
+        data["title"] = title
+    if body is not None:
+        data["body"] = body
+    if macro is not None:
+        data["macro"] = macro
+    if not data:
+        console.print("[yellow]Nothing to update. Pass --title, --body, or --macro.[/yellow]")
+        return
     playbooks.update_playbook(playbook_id, title=title or "", body=body, macro=macro)
     console.print(f"[green]Playbook {playbook_id} updated.[/green]")
 
@@ -993,9 +1005,12 @@ def chain_cmd(
         console.print(f"[bold cyan]Step {i+1}/{len(steps)}:[/bold cyan] Playbook={step_pb}")
 
         if i == 0:
-            with console.status(f"Starting session..."):
+            with console.status("Starting session..."):
                 resp = sessions.create_session(prompt=step_prompt, playbook_id=step_pb)
-                current_sid = resp["session_id"]
+                current_sid = resp.get("session_id")
+                if not current_sid:
+                    console.print("[bold red]Error:[/bold red] No session ID returned from API.")
+                    raise typer.Exit(1)
                 config.current_session_id = current_sid
                 console.print(f"[green]Session started:[/green] {current_sid}")
         else:
