@@ -43,31 +43,24 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Get Version and Hash
+      - name: Resolve version and URL
         run: |
           VERSION=${GITHUB_REF_NAME#v}
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            VERSION=${{ github.event.inputs.tag_name }}
+            VERSION="${{ github.event.inputs.tag_name }}"
             VERSION=${VERSION#v}
           fi
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-          
-          # Construct source URL and fetch to get the hash
-          URL="https://files.pythonhosted.org/packages/source/d/devin-cli/devin_cli-$VERSION.tar.gz"
-          echo "URL=$URL" >> $GITHUB_ENV
-          
-          # Wait a few seconds for PyPI CDN to catch up
-          echo "Waiting 30 seconds for PyPI CDN to propagate..."
-          sleep 30
-          
-          curl -sL $URL -o devin_cli.tar.gz
-          HASH=$(sha256sum devin_cli.tar.gz | awk '{print $1}')
-          echo "HASH=$HASH" >> $GITHUB_ENV
+          echo "URL=https://files.pythonhosted.org/packages/source/d/devin-cli/devin_cli-${VERSION}.tar.gz" >> $GITHUB_ENV
+
+      - name: Wait for PyPI CDN propagation
+        run: |
+          echo "Waiting 90 seconds for PyPI CDN to propagate..."
+          sleep 90
+          echo "Verifying tarball is accessible..."
+          curl --fail --silent --head "$URL" && echo "Tarball is available." || (echo "ERROR: Tarball not yet available at $URL" && exit 1)
+        env:
+          URL: ${{ env.URL }}
 
       - name: Update Homebrew Formula
         uses: mislav/bump-homebrew-formula-action@v3
@@ -79,3 +72,4 @@ jobs:
           commit-message: "Update devin-cli to ${{ env.VERSION }}"
         env:
           COMMITTER_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+
