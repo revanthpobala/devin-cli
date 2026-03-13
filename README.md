@@ -51,7 +51,16 @@ devin watch
 
 ---
 
-## 🔑 Multi-Profile Support
+## Authentication & Usage
+
+### AI Agent Integration (JSON Output)
+For external automation and AI agent architectures relying on the CLI, `devin-cli` supports a global `--json` flag. This will suppress all visual output/terminal colors and instead uniformly return raw JSON objects for stdout and API errors, making the CLI completely deterministic to parse.
+```bash
+devin --json sessions create "My prompt"
+# { "session_id": "...", "status": "running" }
+```
+
+### Multi-Profile Support
 
 ```bash
 devin configure --profile personal

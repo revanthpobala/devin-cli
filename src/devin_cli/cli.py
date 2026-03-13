@@ -1,6 +1,8 @@
 import typer
 import time
 import json
+import requests
+import functools
 import yaml
 import asyncio
 from pathlib import Path
@@ -80,10 +82,17 @@ def main(
     ctx: typer.Context,
     profile: Optional[str] = typer.Option(None, "--profile", "-p", help="Configuration profile to use (e.g., service, personal)"),
     version: Optional[bool] = typer.Option(None, "--version", "-v", help="Show the application's version and exit."),
+    json_format: bool = typer.Option(False, "--json", help="Output raw JSON (for AI agents & scripting)"),
 ):
     """
     Unofficial CLI for Devin AI v3.
     """
+    if json_format:
+        import os
+        import warnings
+        os.environ["DEVIN_OUTPUT_FORMAT"] = "json"
+        warnings.filterwarnings("ignore")
+        
     if version:
         console.print(f"devin CLI version: {__version__}")
         raise typer.Exit()
@@ -97,16 +106,50 @@ def handle_api_error(func):
     """Decorator to handle API errors gracefully."""
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
+        import os
+        is_json = os.environ.get("DEVIN_OUTPUT_FORMAT") == "json"
+        original_print = console.print
         try:
-            return func(*args, **kwargs)
-        except APIError as e:
-            console.print(f"[bold red]Error:[/bold red] {e}")
-            if e.status_code == 401:
-                console.print("Tip: Check your API token with 'devin configure'.")
-            raise typer.Exit(1)
-        except Exception as e:
-            console.print(f"[bold red]Unexpected Error:[/bold red] {e}")
-            raise typer.Exit(1)
+            if is_json:
+                console.print = lambda *a, **k: None
+
+            result = func(*args, **kwargs)
+            
+            if is_json:
+                console.print = original_print
+                if result is not None:
+                    print(json.dumps(result, indent=2))
+                    
+            return result
+        except BaseException as e:
+            if is_json:
+                console.print = original_print
+            if isinstance(e, typer.Exit):
+                raise e
+            elif isinstance(e, requests.exceptions.RequestException):
+                if is_json:
+                    print(json.dumps({"error": "Connection error", "details": str(e)}, indent=2))
+                else:
+                    console.print(f"[bold red]Connection Error:[/bold red] Failed to connect to {config.base_url}")
+                    console.print(f"[dim]{str(e)}[/dim]")
+                raise typer.Exit(1)
+            elif hasattr(e, "response"): # Standard APIError handling
+                if is_json:
+                    try:
+                        err_json = e.response.json()
+                    except:
+                        err_json = {"error": str(e)}
+                    print(json.dumps(err_json, indent=2))
+                else:
+                    console.print(f"[bold red]API Error:[/bold red] {e}")
+                raise typer.Exit(1)
+            else:
+                if is_json:
+                    print(json.dumps({"error": str(e)}, indent=2))
+                else:
+                    console.print(f"[bold red]Error:[/bold red] {e}")
+                raise typer.Exit(1)
+            
     return wrapper
 
 def get_current_session_id():
@@ -408,6 +451,7 @@ def list_knowledge_cmd(org: Optional[str] = typer.Option(None, "--org")):
         table.add_row(item.get("id"), item.get("title") or item.get("name"))
     console.print(table)
 
+    return resp
 @knowledge_app.command("create")
 @handle_api_error
 def create_knowledge_cmd(
@@ -576,6 +620,7 @@ def list_schedules_cmd(org: Optional[str] = typer.Option(None, "--org")):
         table.add_row(item.get("id"), item.get("title"), item.get("cron"))
     console.print(table)
 
+    return resp
 @schedule_app.command("create")
 @handle_api_error
 def create_schedule_cmd(
@@ -676,6 +721,7 @@ def whoami_cmd():
     resp = members.get_self()
     console.print(Panel(json.dumps(resp, indent=2), title="Who Am I"))
 
+    return resp
 @enterprise_app.command("list-orgs")
 @handle_api_error
 def list_orgs_cmd():
@@ -683,6 +729,7 @@ def list_orgs_cmd():
     resp = organizations.list_organizations()
     console.print(Panel(json.dumps(resp, indent=2), title="Organizations"))
 
+    return resp
 # --- Global Commands ---
 @app.command("use")
 def use_session_cmd(session_id: str):
@@ -711,6 +758,7 @@ def status_cmd():
     if url:
         console.print(f"[bold]URL:[/bold]     [underline]{url}[/underline]")
 
+        return resp
 @app.command("open")
 @handle_api_error
 def open_cmd(
@@ -865,6 +913,7 @@ def upload_cmd(path: Path = typer.Argument(..., help="File to upload")):
     resp = attachments.upload_file(str(path))
     console.print(f"[green]Uploaded:[/green] {resp}")
 
+    return resp
 @app.command("list-knowledge")
 @handle_api_error
 def list_knowledge_top_cmd():
@@ -878,6 +927,7 @@ def list_knowledge_top_cmd():
         table.add_row(item.get("id"), item.get("title") or item.get("name"))
     console.print(table)
 
+    return resp
 @app.command("attach")
 @handle_api_error
 def attach_cmd(
@@ -1006,6 +1056,7 @@ def list_secrets_top_cmd():
             table.add_row(item.get("id", ""), item.get("name", ""))
     console.print(table)
 
+    return resp
 @app.command("delete-secret")
 @handle_api_error
 def delete_secret_top_cmd(secret_id: str = typer.Argument(...)):

@@ -22,6 +22,6 @@ def test_cli_handles_api_error():
         # command is now 'sessions create'
         result = runner.invoke(app, ["sessions", "create", "test prompt"])
         assert result.exit_code == 1
-        assert "Unexpected Error" in result.stdout
+        assert "Error" in result.stdout
         assert "API BOOM" in result.stdout
 
