@@ -16,7 +16,6 @@ from devin_cli.config import config
 from devin_cli.api import sessions, knowledge, playbooks, secrets, attachments, repositories, schedules, organizations, members, consumption
 from devin_cli.api.client import client, APIError
 import webbrowser
-import functools
 import sys
 import hashlib
 import importlib.metadata
@@ -758,7 +757,7 @@ def status_cmd():
     if url:
         console.print(f"[bold]URL:[/bold]     [underline]{url}[/underline]")
 
-        return resp
+    return resp
 @app.command("open")
 @handle_api_error
 def open_cmd(
@@ -904,7 +903,11 @@ def create_session_top_cmd(
 ):
     """Create a new session (alias for: devin sessions create)."""
     create_session_cmd(prompt=prompt, file=None, title=title, org=None, max_acu=None,
-                       advanced_mode=None, force=force, wait=wait, interval=interval)
+                       advanced_mode=None, playbook_id=None, child_playbook_id=None,
+                       tags=None, repos=None, knowledge_ids=None, secret_ids=None,
+                       session_links=None, attachment_urls=None, create_as_user_id=None,
+                       bypass_approval=False, structured_output_schema=None,
+                       force=force, wait=wait, interval=interval)
 
 @app.command("upload")
 @handle_api_error
@@ -1031,7 +1034,7 @@ def update_playbook_top_cmd(
     if not data:
         console.print("[yellow]Nothing to update. Pass --title, --body, or --macro.[/yellow]")
         return
-    playbooks.update_playbook(playbook_id, title=title or "", body=body, macro=macro)
+    playbooks.update_playbook(playbook_id, title=title, body=body, macro=macro)
     console.print(f"[green]Playbook {playbook_id} updated.[/green]")
 
 @app.command("delete-playbook")
@@ -1123,7 +1126,7 @@ def chain_cmd(
         while True:
             resp = sessions.get_session(current_sid)
             status = resp.get("status_enum", "")
-            if status in {"blocked", "finished", "stopped", "error"}:
+            if status in {"finished", "stopped", "error"}:
                 console.print(f"Step {i+1} done (status: {status}).")
                 break
             time.sleep(min(backoff, 10))
