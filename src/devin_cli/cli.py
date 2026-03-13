@@ -1,3 +1,12 @@
+import warnings
+import os
+import sys
+
+# Suppress urllib3 warnings early for clean JSON output
+if "--json" in sys.argv or os.environ.get("DEVIN_OUTPUT_FORMAT") == "json":
+    warnings.filterwarnings("ignore")
+    os.environ["DEVIN_OUTPUT_FORMAT"] = "json"
+
 import typer
 import time
 import json
@@ -87,10 +96,7 @@ def main(
     Unofficial CLI for Devin AI v3.
     """
     if json_format:
-        import os
-        import warnings
         os.environ["DEVIN_OUTPUT_FORMAT"] = "json"
-        warnings.filterwarnings("ignore")
         
     if version:
         console.print(f"devin CLI version: {__version__}")
@@ -187,6 +193,7 @@ def configure(
     if org_id:
         config.org_id = org_id
     console.print(f"[green]Configuration saved to {config.config_file}[/green]")
+    return None
 
 # --- Sessions ---
 @session_app.command("create")
@@ -302,6 +309,8 @@ def create_session_cmd(
                             break
         else:
             console.print("[yellow]Session created, but no ID returned immediately (awaiting advanced mode setup).[/yellow]")
+        
+    return resp
 
 
 @session_app.command("list")
@@ -329,6 +338,8 @@ def list_sessions_cmd(
         for s in sess_list:
             table.add_row(s.get("session_id"), s.get("status_enum"), s.get("title") or s.get("prompt", "")[:50])
         console.print(table)
+    
+    return resp
 
 @session_app.command("get")
 @handle_api_error
@@ -341,6 +352,8 @@ def get_session_cmd(
     sid = session_id or get_current_session_id()
     resp = sessions.get_session(sid)
     console.print(Panel(json.dumps(resp, indent=2), title=f"Session {sid}"))
+    
+    return resp
 
 @session_app.command("insights")
 @handle_api_error
@@ -357,6 +370,8 @@ def session_insights_cmd(
         console.print("Tip: Switch to v3 with [bold cyan]devin configure[/bold cyan] or use [bold cyan]--profile [v3-profile][/bold cyan]")
     else:
         console.print(Panel(json.dumps(resp, indent=2), title=f"Insights for {sid}"))
+        
+    return resp
 
 @session_app.command("cost")
 @handle_api_error
@@ -380,6 +395,8 @@ def session_cost_cmd(
     else:
         resp = consumption.get_daily_consumption_breakdown()
         console.print(Panel(json.dumps(resp, indent=2), title="Daily Consumption"))
+        
+    return resp
 
 @session_app.command("message")
 @handle_api_error
@@ -404,6 +421,7 @@ def send_message_cmd(
         raise typer.Exit(1)
     sessions.send_message(sid, msg_text)
     console.print(f"[green]Message sent to {sid}[/green]")
+    return None
 
 @session_app.command("messages")
 @handle_api_error
@@ -421,6 +439,8 @@ def list_messages_cmd(
         content = m.get("message", "") or m.get("content", "")
         console.print(f"[bold cyan]{role}:[/bold cyan] {content}")
         console.print("---")
+        
+    return resp
 
 @session_app.command("terminate")
 @handle_api_error
@@ -434,6 +454,7 @@ def terminate_session_cmd(
     if typer.confirm(f"Terminate session {sid}?"):
         sessions.terminate_session(sid)
         console.print(f"[green]Session {sid} terminated.[/green]")
+        return None
 
 # --- Knowledge ---
 @knowledge_app.command("list")
@@ -463,6 +484,8 @@ def create_knowledge_cmd(
     if org: config.temporary_org_id = org
     resp = knowledge.create_knowledge(title=title, body=body, trigger=trigger)
     console.print(f"[green]Created note:[/green] {resp.get('id')}")
+    
+    return resp
 
 @knowledge_app.command("delete")
 @handle_api_error
@@ -475,6 +498,8 @@ def delete_knowledge_cmd(
     if typer.confirm(f"Delete knowledge {knowledge_id}?"):
         knowledge.delete_knowledge(knowledge_id)
         console.print(f"[green]Knowledge {knowledge_id} deleted.[/green]")
+        
+    return None
 
 # --- Playbooks ---
 @playbook_app.command("list")
@@ -499,6 +524,7 @@ def list_playbooks_cmd(
         if isinstance(item, dict):
             table.add_row(item.get("playbook_id", ""), item.get("title", ""))
     console.print(table)
+    return resp
 
 @playbook_app.command("update")
 @handle_api_error
@@ -519,6 +545,8 @@ def update_playbook_cmd(
     if org: config.temporary_org_id = org
     resp = playbooks.update_playbook(playbook_id, title=title, body=body, macro=macro)
     console.print(f"[green]Playbook updated:[/green] {playbook_id}")
+    
+    return resp
 
 @playbook_app.command("create")
 @handle_api_error
@@ -538,6 +566,8 @@ def create_playbook_cmd(
     if org: config.temporary_org_id = org
     resp = playbooks.create_playbook(title, body, macro)
     console.print(f"[green]Playbook created:[/green] {resp.get('playbook_id')}")
+    
+    return resp
 
 @playbook_app.command("delete")
 @handle_api_error
@@ -550,6 +580,7 @@ def delete_playbook_cmd(
     if typer.confirm(f"Delete playbook {playbook_id}?"):
         playbooks.delete_playbook(playbook_id)
         console.print(f"[green]Playbook {playbook_id} deleted.[/green]")
+        return None
 
 # --- Secrets ---
 @secret_app.command("list")
@@ -578,6 +609,7 @@ def list_secrets_cmd(
         if isinstance(item, dict):
             table.add_row(item.get("id"), item.get("name"))
     console.print(table)
+    return resp
 
 @secret_app.command("delete")
 @handle_api_error
@@ -590,6 +622,7 @@ def delete_secret_cmd(
     if typer.confirm(f"Delete secret {secret_id}?"):
         secrets.delete_secret(secret_id)
         console.print(f"[green]Secret {secret_id} deleted.[/green]")
+        return None
 
 @secret_app.command("create")
 @handle_api_error
@@ -602,6 +635,8 @@ def create_secret_cmd(
     if org: config.temporary_org_id = org
     secrets.create_secret(name, value)
     console.print(f"[green]Secret '{name}' created.[/green]")
+    
+    return None
 
 # --- Schedules ---
 @schedule_app.command("list")
@@ -618,6 +653,8 @@ def list_schedules_cmd(org: Optional[str] = typer.Option(None, "--org")):
     for item in items:
         table.add_row(item.get("id"), item.get("title"), item.get("cron"))
     console.print(table)
+    
+    return resp
 
     return resp
 @schedule_app.command("create")
@@ -632,6 +669,8 @@ def create_schedule_cmd(
     if org: config.temporary_org_id = org
     resp = schedules.create_schedule(prompt=prompt, cron=cron, title=title)
     console.print(f"[green]Created schedule:[/green] {resp.get('id')}")
+
+    return resp
 
 # --- Repositories ---
 @repo_app.command("list")
@@ -673,6 +712,7 @@ def list_repos_cmd(
         )
         table.add_row(path, "Yes" if indexed else "No")
     console.print(table)
+    return resp
 
 @repo_app.command("index")
 @handle_api_error
@@ -685,6 +725,8 @@ def index_repo_cmd(
     repositories.index_repository(path)
     console.print(f"[green]Indexing started for {path}[/green]")
 
+    return None
+
 # --- Attachments ---
 @attachment_app.command("upload")
 @handle_api_error
@@ -696,6 +738,7 @@ def upload_attachment_cmd(
     if org: config.temporary_org_id = org
     resp = attachments.upload_file(str(path))
     console.print(f"[green]Uploaded:[/green] {resp}")
+    return resp
 
 @attachment_app.command("download")
 @handle_api_error
@@ -711,6 +754,8 @@ def download_attachment_cmd(
     out_path = output or Path(name)
     out_path.write_bytes(content)
     console.print(f"[green]Downloaded to:[/green] {out_path}")
+
+    return None
 
 # --- Enterprise Discovery ---
 @enterprise_app.command("whoami")
@@ -735,6 +780,9 @@ def use_session_cmd(session_id: str):
     """Switch the current active session."""
     config.current_session_id = session_id
     console.print(f"[green]Switched to session {session_id}[/green]")
+    return {"current_session_id": session_id}
+
+    return {"current_session_id": session_id}
 
 @app.command("status")
 @handle_api_error
@@ -772,6 +820,8 @@ def open_cmd(
         raise typer.Exit(1)
     webbrowser.open(url)
     console.print(f"[green]Opened:[/green] {url}")
+
+    return resp
 
 @session_app.command("watch")
 @handle_api_error
@@ -827,6 +877,7 @@ def watch_session_cmd(
             return
 
     console.print(f"[bold green]Session {resp.get('status_enum')}![/bold green]")
+    return resp
 
 # --- Flat top-level aliases (backward compat with 0.1.x command structure) ---
 
@@ -838,6 +889,7 @@ def watch_cmd(
 ):
     """Alias for: devin sessions watch"""
     watch_session_cmd(session_id=session_id, interval=interval, org=None)
+    return None
 
 @app.command("message")
 @handle_api_error
@@ -860,6 +912,7 @@ def message_cmd(
         raise typer.Exit(1)
     sessions.send_message(sid, msg_text)
     console.print(f"[green]Message sent to {sid}[/green]")
+    return None
 
 @app.command("terminate")
 @handle_api_error
@@ -871,6 +924,7 @@ def terminate_cmd(
     if typer.confirm(f"Terminate session {sid}?"):
         sessions.terminate_session(sid)
         console.print(f"[green]Session {sid} terminated.[/green]")
+        return None
 
 @app.command("list-sessions")
 @handle_api_error
@@ -891,6 +945,7 @@ def list_sessions_top_cmd(
     for s in sess_list:
         table.add_row(s.get("session_id"), s.get("status_enum"), s.get("title") or s.get("prompt", "")[:50])
     console.print(table)
+    return resp
 
 @app.command("create-session")
 @handle_api_error
@@ -908,6 +963,7 @@ def create_session_top_cmd(
                        session_links=None, attachment_urls=None, create_as_user_id=None,
                        bypass_approval=False, structured_output_schema=None,
                        force=force, wait=wait, interval=interval)
+    return None
 
 @app.command("upload")
 @handle_api_error
@@ -948,6 +1004,7 @@ def attach_cmd(
     full_prompt = f"{prompt}\n\nATTACHMENT: \"{url}\""
     create_session_cmd(prompt=full_prompt, file=None, title=title, org=None, max_acu=None,
                        advanced_mode=None, force=False, wait=wait, interval=interval)
+    return None
 
 @app.command("update-tags")
 @handle_api_error
@@ -960,6 +1017,8 @@ def update_tags_cmd(
     sessions.update_session_tags(sid, tags)
     console.print(f"[green]Tags updated for session {sid}.[/green]")
 
+    return None
+
 @app.command("history")
 def history_cmd():
     """Show the locally cached current session ID."""
@@ -968,6 +1027,9 @@ def history_cmd():
         console.print(f"Current local session: [cyan]{sid}[/cyan]")
     else:
         console.print("No current local session.")
+    return {"current_session_id": sid}
+
+    return {"current_session_id": sid}
 
 @app.command("messages")
 @handle_api_error
@@ -984,6 +1046,7 @@ def messages_cmd(
         role = m.get("role", "unknown")
         content = m.get("message", "") or m.get("content", "")
         console.print(f"[bold cyan]{role}:[/bold cyan] {content}")
+        return resp
 
 @app.command("get-session")
 @handle_api_error
@@ -1002,6 +1065,7 @@ def get_session_top_cmd(
     if "structured_output" in resp:
         console.print("[bold]Structured Output:[/bold]")
         console.print(json.dumps(resp["structured_output"], indent=2))
+        return resp
 
 @app.command("update-knowledge")
 @handle_api_error
@@ -1014,6 +1078,7 @@ def update_knowledge_cmd(
     """Update an existing knowledge entry."""
     knowledge.update_knowledge(knowledge_id, title=name, body=body, trigger=trigger)
     console.print(f"[green]Knowledge {knowledge_id} updated.[/green]")
+    return None
 
 @app.command("update-playbook")
 @handle_api_error
@@ -1036,6 +1101,7 @@ def update_playbook_top_cmd(
         return
     playbooks.update_playbook(playbook_id, title=title, body=body, macro=macro)
     console.print(f"[green]Playbook {playbook_id} updated.[/green]")
+    return None
 
 @app.command("delete-playbook")
 @handle_api_error
@@ -1044,6 +1110,7 @@ def delete_playbook_top_cmd(playbook_id: str = typer.Argument(...)):
     if typer.confirm(f"Delete playbook {playbook_id}?"):
         playbooks.delete_playbook(playbook_id)
         console.print(f"[green]Playbook {playbook_id} deleted.[/green]")
+        return None
 
 @app.command("list-secrets")
 @handle_api_error
@@ -1067,6 +1134,7 @@ def delete_secret_top_cmd(secret_id: str = typer.Argument(...)):
     if typer.confirm(f"Delete secret {secret_id}?"):
         secrets.delete_secret(secret_id)
         console.print(f"[green]Secret {secret_id} deleted.[/green]")
+        return None
 
 @app.command("chain")
 @handle_api_error
@@ -1133,6 +1201,7 @@ def chain_cmd(
             backoff = min(backoff * 1.5, 10)
 
     console.print("[bold green]Chain completed![/bold green]")
+    return resp
 
 if __name__ == "__main__":
     app()
