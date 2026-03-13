@@ -27,8 +27,9 @@ def create_session(
 ):
     data = {
         "prompt": prompt,
-        "bypass_approval": bypass_approval,
     }
+    if bypass_approval:
+        data["bypass_approval"] = bypass_approval
     if advanced_mode:
         data["advanced_mode"] = advanced_mode
     if attachment_urls:

@@ -413,11 +413,12 @@ def list_knowledge_cmd(org: Optional[str] = typer.Option(None, "--org")):
 def create_knowledge_cmd(
     title: str, 
     body: str, 
+    trigger: str = typer.Option("", "--trigger", help="Trigger description"),
     org: Optional[str] = typer.Option(None, "--org"),
 ):
     """Create a knowledge note."""
     if org: config.temporary_org_id = org
-    resp = knowledge.create_knowledge(title, body)
+    resp = knowledge.create_knowledge(title=title, body=body, trigger=trigger)
     console.print(f"[green]Created note:[/green] {resp.get('id')}")
 
 @knowledge_app.command("delete")
@@ -435,13 +436,21 @@ def delete_knowledge_cmd(
 # --- Playbooks ---
 @playbook_app.command("list")
 @handle_api_error
-def list_playbooks_cmd(org: Optional[str] = typer.Option(None, "--org")):
+def list_playbooks_cmd(
+    org: Optional[str] = typer.Option(None, "--org"),
+    json_output: bool = typer.Option(False, "--json", help="Output raw JSON"),
+):
     """List team playbooks."""
     if org: config.temporary_org_id = org
     resp = playbooks.list_playbooks()
     items = resp.get("items", []) if isinstance(resp, dict) else resp
+    
+    if json_output:
+        console.print(json.dumps(items, indent=2))
+        return
+
     table = Table(title="Playbooks")
-    table.add_column("ID", style="cyan")
+    table.add_column("ID", style="cyan", no_wrap=True)
     table.add_column("Title")
     for item in items:
         if isinstance(item, dict):
@@ -950,7 +959,7 @@ def update_knowledge_cmd(
     trigger: Optional[str] = typer.Option(None, "--trigger"),
 ):
     """Update an existing knowledge entry."""
-    knowledge.update_knowledge(knowledge_id, title=name, body=body)
+    knowledge.update_knowledge(knowledge_id, title=name, body=body, trigger=trigger)
     console.print(f"[green]Knowledge {knowledge_id} updated.[/green]")
 
 @app.command("update-playbook")

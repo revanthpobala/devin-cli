@@ -24,19 +24,21 @@ def test_create_knowledge():
     )
     knowledge.create_knowledge(
         title="test",
-        body="content"
+        body="content",
+        trigger="my_trigger"
     )
     assert route.called
     import json
     body = json.loads(route.calls.last.request.read())
-    assert body["title"] == "test"
+    assert body["name"] == "test"
+    assert body["trigger"] == "my_trigger"
 
 @respx.mock
 def test_update_knowledge():
     route = respx.put("https://api.devin.ai/v3/organizations/test_org/knowledge/notes/k_123").mock(
         return_value=Response(200)
     )
-    knowledge.update_knowledge("k_123", title="new")
+    knowledge.update_knowledge("k_123", title="new", trigger="new_trigger")
     assert route.called
 
 @respx.mock
