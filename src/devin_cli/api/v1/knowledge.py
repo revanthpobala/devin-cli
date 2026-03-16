@@ -45,5 +45,8 @@ def update_knowledge(
         
     return client.put(f"knowledge/{knowledge_id}", json=data)
 
+def get_knowledge(knowledge_id: str):
+    return client.get(f"knowledge/{knowledge_id}")
+
 def delete_knowledge(knowledge_id: str):
     return client.delete(f"knowledge/{knowledge_id}")

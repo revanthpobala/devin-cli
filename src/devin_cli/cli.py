@@ -454,7 +454,7 @@ def terminate_session_cmd(
     if typer.confirm(f"Terminate session {sid}?"):
         sessions.terminate_session(sid)
         console.print(f"[green]Session {sid} terminated.[/green]")
-        return None
+    return None
 
 # --- Knowledge ---
 @knowledge_app.command("list")
@@ -485,6 +485,19 @@ def create_knowledge_cmd(
     resp = knowledge.create_knowledge(title=title, body=body, trigger=trigger)
     console.print(f"[green]Created note:[/green] {resp.get('id')}")
     
+    return resp
+    
+    
+@knowledge_app.command("get")
+@handle_api_error
+def get_knowledge_cmd(
+    knowledge_id: str,
+    org: Optional[str] = typer.Option(None, "--org"),
+):
+    """Get detailed content of a knowledge note."""
+    if org: config.temporary_org_id = org
+    resp = knowledge.get_knowledge(knowledge_id)
+    console.print(Panel(json.dumps(resp, indent=2), title=f"Knowledge: {knowledge_id}"))
     return resp
 
 @knowledge_app.command("delete")
@@ -580,7 +593,7 @@ def delete_playbook_cmd(
     if typer.confirm(f"Delete playbook {playbook_id}?"):
         playbooks.delete_playbook(playbook_id)
         console.print(f"[green]Playbook {playbook_id} deleted.[/green]")
-        return None
+    return None
 
 # --- Secrets ---
 @secret_app.command("list")
@@ -622,7 +635,7 @@ def delete_secret_cmd(
     if typer.confirm(f"Delete secret {secret_id}?"):
         secrets.delete_secret(secret_id)
         console.print(f"[green]Secret {secret_id} deleted.[/green]")
-        return None
+    return None
 
 @secret_app.command("create")
 @handle_api_error
@@ -654,7 +667,6 @@ def list_schedules_cmd(org: Optional[str] = typer.Option(None, "--org")):
         table.add_row(item.get("id"), item.get("title"), item.get("cron"))
     console.print(table)
     
-    return resp
 
     return resp
 @schedule_app.command("create")
@@ -782,8 +794,6 @@ def use_session_cmd(session_id: str):
     console.print(f"[green]Switched to session {session_id}[/green]")
     return {"current_session_id": session_id}
 
-    return {"current_session_id": session_id}
-
 @app.command("status")
 @handle_api_error
 def status_cmd():
@@ -856,7 +866,6 @@ def watch_session_cmd(
             text.append("\nStructured Output:\n", style="bold")
             text.append(json.dumps(so, indent=2))
         text.append("\nPress Ctrl+C to stop watching.", style="dim")
-        return Panel(text, title="[bold cyan]Devin Watch[/bold cyan]", border_style="cyan")
 
     console.print(f"[bold cyan]Watching session {sid}[/bold cyan] (Ctrl+C to stop)")
 
@@ -924,7 +933,7 @@ def terminate_cmd(
     if typer.confirm(f"Terminate session {sid}?"):
         sessions.terminate_session(sid)
         console.print(f"[green]Session {sid} terminated.[/green]")
-        return None
+    return None
 
 @app.command("list-sessions")
 @handle_api_error
@@ -1046,7 +1055,8 @@ def messages_cmd(
         role = m.get("role", "unknown")
         content = m.get("message", "") or m.get("content", "")
         console.print(f"[bold cyan]{role}:[/bold cyan] {content}")
-        return resp
+
+    return resp
 
 @app.command("get-session")
 @handle_api_error
@@ -1059,13 +1069,14 @@ def get_session_top_cmd(
     console.print(Panel(
         f"[bold]Status:[/bold] {resp.get('status_enum')}\n"
         f"[bold]URL:[/bold] {resp.get('url')}\n"
-        f"[bold]Created:[/bold] {resp.get('created_at')}",
+        f"Created: {resp.get('created_at')}",
         title=f"Session {sid}"
     ))
     if "structured_output" in resp:
         console.print("[bold]Structured Output:[/bold]")
         console.print(json.dumps(resp["structured_output"], indent=2))
-        return resp
+        
+    return resp
 
 @app.command("update-knowledge")
 @handle_api_error
@@ -1079,6 +1090,14 @@ def update_knowledge_cmd(
     knowledge.update_knowledge(knowledge_id, title=name, body=body, trigger=trigger)
     console.print(f"[green]Knowledge {knowledge_id} updated.[/green]")
     return None
+
+@app.command("get-knowledge")
+@handle_api_error
+def get_knowledge_top_cmd(knowledge_id: str = typer.Argument(...)):
+    """Get content of a knowledge note (alias for: devin knowledge get)."""
+    resp = knowledge.get_knowledge(knowledge_id)
+    console.print(Panel(json.dumps(resp, indent=2), title=f"Knowledge: {knowledge_id}"))
+    return resp
 
 @app.command("update-playbook")
 @handle_api_error
@@ -1110,7 +1129,7 @@ def delete_playbook_top_cmd(playbook_id: str = typer.Argument(...)):
     if typer.confirm(f"Delete playbook {playbook_id}?"):
         playbooks.delete_playbook(playbook_id)
         console.print(f"[green]Playbook {playbook_id} deleted.[/green]")
-        return None
+    return None
 
 @app.command("list-secrets")
 @handle_api_error
@@ -1134,7 +1153,7 @@ def delete_secret_top_cmd(secret_id: str = typer.Argument(...)):
     if typer.confirm(f"Delete secret {secret_id}?"):
         secrets.delete_secret(secret_id)
         console.print(f"[green]Secret {secret_id} deleted.[/green]")
-        return None
+    return None
 
 @app.command("chain")
 @handle_api_error

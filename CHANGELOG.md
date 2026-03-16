@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-03-13
+### Added
+- **Global `--json` Output**: New orchestration flag that converts *all* CLI output and API errors into pure, parseable JSON for AI agents.
+- **Knowledge Get Command**: Added `devin knowledge get <id>` and `devin get-knowledge <id>` to retrieve full note content.
+- Missing v1 and v3 `get_knowledge` / `create_secret` cross-compatibility polyfills.
+
+### Fixed
+- **Audit Fixes**: Resolved 13 critical bugs found during full codebase audit (indentation errors, missing returns, duplicate imports, and terminal status handling).
+- **Warning Suppression**: Suppressed `urllib3` SSL warnings in JSON mode to ensure clean stdout streams.
+
 ## [1.2.0] - 2026-03-11
 ### Added
 - `sessions create` / `create-session` now exposes all 8 previously missing v3 API parameters: `--playbook-id`, `--tag`, `--repo`, `--knowledge-id`, `--secret-id`, `--session-link`, `--attachment-url`, `--create-as-user-id`.
