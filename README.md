@@ -117,6 +117,8 @@ Profiles are stored in `~/.config/devin/config.json` — fully isolated includin
 | `insights` | `[session_id]` | ACU / performance insights (v3) |
 | `cost` | `[session_id]` | ACU consumption |
 
+> **Note for Service Tokens (`cog_`):** When retrieving a specific session via `devin sessions get <id>`, the CLI automatically falls back to filtering the org-wide `sessions list` via a `?session_ids=[<id>]` query parameter to gracefully bypass the `403 Forbidden` error natively returned by the direct API endpoint for service accounts.
+
 #### `sessions create` / `create-session` — Full Flag Reference
 
 | Flag | Type | Description |

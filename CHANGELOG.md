@@ -5,8 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.2] - 2026-03-23
+### Fixed
+- **Service Token 403s**: `sessions get` and `sessions cost` now seamlessly fall back to the `list` endpoint with a `session_ids` filter to cleanly bypass 403 Forbidden errors for `cog_` Service Tokens.
+- **Empty List Tables**: Fixed a core bug where `sessions list` displayed an empty table on v3 profiles by accurately parsing the returning `items` API key.
+- **Terminate Hang**: Solved an architectural issue where `sessions terminate` would hang indefinitely on a 403 by shifting to the correct POST `/terminate` endpoint and strictly enforcing a 5-second `httpx` timeout.
+
 ## [1.3.1] - 2026-03-16
-### Added
 - **Global `--json` Output**: New orchestration flag that converts *all* CLI output and API errors into pure, parseable JSON for AI agents.
 - **Knowledge Get Command**: Added `devin knowledge get <id>` and `devin get-knowledge <id>` to retrieve full note content.
 - Missing v1 and v3 `get_knowledge` / `create_secret` cross-compatibility polyfills.

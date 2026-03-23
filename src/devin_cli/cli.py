@@ -323,7 +323,7 @@ def list_sessions_cmd(
     """List sessions."""
     if org: config.temporary_org_id = org
     resp = sessions.list_sessions(limit=limit)
-    sess_list = resp.get("sessions", [])
+    sess_list = resp.get("items", resp.get("sessions", []))
     
     if not sess_list and config.api_token and config.api_token.startswith("cog_"):
         console.print("[yellow]Warning: Service tokens (cog_) may only have visibility into sessions they explicitly created, not all organization sessions.[/yellow]")
@@ -943,7 +943,7 @@ def list_sessions_top_cmd(
 ):
     """List recent sessions (alias for: devin sessions list)."""
     resp = sessions.list_sessions(limit=limit)
-    sess_list = resp.get("sessions", [])
+    sess_list = resp.get("items", resp.get("sessions", []))
     if json_output:
         console.print(json.dumps(sess_list, indent=2))
         return

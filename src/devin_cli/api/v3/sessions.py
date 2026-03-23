@@ -62,7 +62,18 @@ def create_session(
     return client.post("sessions", json=data)
 
 def get_session(session_id: str):
-    return client.get(f"sessions/{session_id}")
+    try:
+        return client.get(f"sessions/{session_id}")
+    except Exception as e:
+        from devin_cli.api.client import APIError
+        if isinstance(e, APIError) and e.status_code in (403, 404):
+            # Fallback to list endpoint with session_ids filter (especially for cog_ tokens)
+            res = client.get("sessions", params={"session_ids": [session_id]})
+            items = res.get("items", [])
+            if items:
+                return items[0]
+            raise
+        raise
 
 def get_session_messages(session_id: str):
     return client.get(f"sessions/{session_id}/messages")
@@ -83,7 +94,7 @@ def append_session_tags(session_id: str, tags: List[str]):
     return client.post(f"sessions/{session_id}/tags", json={"tags": tags})
 
 def terminate_session(session_id: str):
-    return client.delete(f"sessions/{session_id}")
+    return client.post(f"sessions/{session_id}/terminate", timeout=5.0)
 
 def archive_session(session_id: str):
     return client.post(f"sessions/{session_id}/archive")
