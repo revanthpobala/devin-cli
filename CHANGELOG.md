@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.3] - 2026-04-21
+### Fixed
+- **ModuleNotFoundError: requests**: Replaced the leftover `requests` import and exception handling in `cli.py` with `httpx` to match project dependencies. This fixes installation errors via Homebrew and pipx.
+- **Test Matrix**: Fixed `test_terminate_session` mock to correctly expect a `POST` request to the `/terminate` endpoint instead of `DELETE`.
+
 ## [1.3.2] - 2026-03-23
 ### Fixed
 - **Service Token 403s**: `sessions get` and `sessions cost` now seamlessly fall back to the `list` endpoint with a `session_ids` filter to cleanly bypass 403 Forbidden errors for `cog_` Service Tokens.

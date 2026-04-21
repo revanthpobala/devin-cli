@@ -62,11 +62,11 @@ def create_session(
     return client.post("sessions", json=data)
 
 def get_session(session_id: str):
+    from devin_cli.api.client import APIError
     try:
         return client.get(f"sessions/{session_id}")
-    except Exception as e:
-        from devin_cli.api.client import APIError
-        if isinstance(e, APIError) and e.status_code in (403, 404):
+    except APIError as e:
+        if e.status_code in (403, 404):
             # Fallback to list endpoint with session_ids filter (especially for cog_ tokens)
             res = client.get("sessions", params={"session_ids": [session_id]})
             items = res.get("items", [])

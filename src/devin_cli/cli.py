@@ -10,7 +10,7 @@ if "--json" in sys.argv or os.environ.get("DEVIN_OUTPUT_FORMAT") == "json":
 import typer
 import time
 import json
-import requests
+import httpx
 import functools
 import yaml
 import asyncio
@@ -131,7 +131,7 @@ def handle_api_error(func):
                 console.print = original_print
             if isinstance(e, typer.Exit):
                 raise e
-            elif isinstance(e, requests.exceptions.RequestException):
+            elif isinstance(e, httpx.RequestError):
                 if is_json:
                     print(json.dumps({"error": "Connection error", "details": str(e)}, indent=2))
                 else:
@@ -142,7 +142,7 @@ def handle_api_error(func):
                 if is_json:
                     try:
                         err_json = e.response.json()
-                    except:
+                    except Exception:
                         err_json = {"error": str(e)}
                     print(json.dumps(err_json, indent=2))
                 else:

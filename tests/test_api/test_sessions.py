@@ -52,7 +52,7 @@ def test_send_message():
 
 @respx.mock
 def test_terminate_session():
-    route = respx.delete("https://api.devin.ai/v3/organizations/test_org/sessions/sess_123").mock(
+    route = respx.post("https://api.devin.ai/v3/organizations/test_org/sessions/sess_123/terminate").mock(
         return_value=Response(204)
     )
     
