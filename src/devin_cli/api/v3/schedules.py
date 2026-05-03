@@ -19,12 +19,12 @@ def create_schedule(
 ):
     data = {
         "prompt": prompt,
-        "cron": cron,
+        "frequency": cron,
+        "schedule_type": "recurring",
+        "agent": "advanced" if advanced_mode else "devin",
     }
     if title:
-        data["title"] = title
-    if advanced_mode:
-        data["advanced_mode"] = advanced_mode
+        data["name"] = title
     if playbook_id:
         data["playbook_id"] = playbook_id
     if repos:
@@ -48,13 +48,13 @@ def update_schedule(
     if prompt:
         data["prompt"] = prompt
     if cron:
-        data["cron"] = cron
+        data["frequency"] = cron
     if title:
-        data["title"] = title
+        data["name"] = title
     if enabled is not None:
         data["enabled"] = enabled
         
-    return client.put(f"schedules/{schedule_id}", json=data)
+    return client.patch(f"schedules/{schedule_id}", json=data)
 
 def delete_schedule(schedule_id: str):
     return client.delete(f"schedules/{schedule_id}")

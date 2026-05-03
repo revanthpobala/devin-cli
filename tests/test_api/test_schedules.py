@@ -27,7 +27,8 @@ def test_create_schedule():
     import json
     body = json.loads(route.calls.last.request.read())
     assert body["prompt"] == "test prompt"
-    assert body["cron"] == "0 0 * * *"
+    assert body["frequency"] == "0 0 * * *"
+    assert body["schedule_type"] == "recurring"
 
 @respx.mock
 def test_delete_schedule():

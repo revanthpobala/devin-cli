@@ -664,7 +664,10 @@ def list_schedules_cmd(org: Optional[str] = typer.Option(None, "--org")):
     table.add_column("Title")
     table.add_column("Cron")
     for item in items:
-        table.add_row(item.get("id"), item.get("title"), item.get("cron"))
+        schedule_id = str(item.get("id") or item.get("scheduled_session_id") or "")
+        title = str(item.get("name") or item.get("title") or "")
+        cron = str(item.get("frequency") or item.get("cron") or "")
+        table.add_row(schedule_id, title, cron)
     console.print(table)
     
 
@@ -680,7 +683,8 @@ def create_schedule_cmd(
     """Create a recurring schedule."""
     if org: config.temporary_org_id = org
     resp = schedules.create_schedule(prompt=prompt, cron=cron, title=title)
-    console.print(f"[green]Created schedule:[/green] {resp.get('id')}")
+    schedule_id = resp.get('id') or resp.get('scheduled_session_id')
+    console.print(f"[green]Created schedule:[/green] {schedule_id}")
 
     return resp
 
