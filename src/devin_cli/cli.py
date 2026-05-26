@@ -311,6 +311,20 @@ def create_session_cmd(
             console.print("[yellow]Session created, but no ID returned immediately (awaiting advanced mode setup).[/yellow]")
         
     return resp
+def get_stable_terminal_state(status_enum: Optional[str]) -> str:
+    if not status_enum:
+        return "running"
+    status = status_enum.lower()
+    if status == "finished":
+        return "completed"
+    elif status in ("failed", "error"):
+        return "failed"
+    elif status in ("stopped", "cancelled", "terminated"):
+        return "terminated"
+    elif status == "blocked":
+        return "blocked"
+    else:
+        return "running"
 
 
 @session_app.command("list")
@@ -325,6 +339,10 @@ def list_sessions_cmd(
     resp = sessions.list_sessions(limit=limit)
     sess_list = resp.get("items", resp.get("sessions", []))
     
+    for s in sess_list:
+        if isinstance(s, dict):
+            s["terminal_state"] = get_stable_terminal_state(s.get("status_enum"))
+            
     if not sess_list and config.api_token and config.api_token.startswith("cog_"):
         console.print("[yellow]Warning: Service tokens (cog_) may only have visibility into sessions they explicitly created, not all organization sessions.[/yellow]")
         
@@ -334,12 +352,19 @@ def list_sessions_cmd(
         table = Table(title="Devin Sessions")
         table.add_column("ID", style="cyan")
         table.add_column("Status", style="magenta")
+        table.add_column("Terminal State", style="blue")
         table.add_column("Title")
         for s in sess_list:
-            table.add_row(s.get("session_id"), s.get("status_enum"), s.get("title") or s.get("prompt", "")[:50])
+            table.add_row(
+                s.get("session_id"),
+                s.get("status_enum"),
+                s.get("terminal_state"),
+                s.get("title") or s.get("prompt", "")[:50]
+            )
         console.print(table)
     
     return resp
+
 
 @session_app.command("get")
 @handle_api_error
@@ -351,6 +376,8 @@ def get_session_cmd(
     if org: config.temporary_org_id = org
     sid = session_id or get_current_session_id()
     resp = sessions.get_session(sid)
+    if isinstance(resp, dict):
+        resp["terminal_state"] = get_stable_terminal_state(resp.get("status_enum"))
     console.print(Panel(json.dumps(resp, indent=2), title=f"Session {sid}"))
     
     return resp
@@ -455,6 +482,98 @@ def terminate_session_cmd(
         sessions.terminate_session(sid)
         console.print(f"[green]Session {sid} terminated.[/green]")
     return None
+
+
+def parse_duration(duration_str: str) -> float:
+    if not duration_str:
+        return 0.0
+    duration_str = duration_str.strip().lower()
+    val = 0.0
+    if duration_str.endswith("s"):
+        val = float(duration_str[:-1])
+    elif duration_str.endswith("m"):
+        val = float(duration_str[:-1]) * 60
+    elif duration_str.endswith("h"):
+        val = float(duration_str[:-1]) * 3600
+    else:
+        try:
+            val = float(duration_str)
+        except ValueError:
+            raise ValueError(f"Invalid duration format: '{duration_str}'. Use format like 10s, 5m, 1h.")
+    if val < 0:
+        raise ValueError("Timeout duration cannot be negative.")
+    return val
+
+
+@session_app.command("wait")
+@handle_api_error
+def wait_session_cmd(
+    session_id: Optional[str] = typer.Argument(None, help="Session ID to wait for (defaults to active session)"),
+    until: str = typer.Option("completed", "--until", help="Terminal state to wait for (completed | terminal)"),
+    timeout: str = typer.Option("1h", "--timeout", help="Timeout duration (e.g. 10s, 5m, 1h)"),
+    interval: int = typer.Option(5, "--interval", help="Polling interval in seconds"),
+    org: Optional[str] = typer.Option(None, "--org"),
+):
+    """Block until the session reaches a terminal state or the desired state."""
+    if org: config.temporary_org_id = org
+    sid = session_id or get_current_session_id()
+    
+    until = until.lower()
+    if until not in ("completed", "terminal"):
+        console.print(f"[bold red]Error:[/bold red] --until must be 'completed' or 'terminal'.")
+        raise typer.Exit(1)
+        
+    try:
+        timeout_seconds = parse_duration(timeout)
+    except ValueError as e:
+        console.print(f"[bold red]Error:[/bold red] {e}")
+        raise typer.Exit(1)
+        
+    start_time = time.time()
+    
+    console.print(f"[dim]Waiting for session {sid} to reach '{until}' (timeout {timeout}, polling every {interval}s)...[/dim]")
+    
+    try:
+        with console.status(f"[bold green]Waiting for session {sid}...[/bold green]") as status:
+            while True:
+                elapsed = time.time() - start_time
+                if timeout_seconds > 0 and elapsed >= timeout_seconds:
+                    console.print(f"\n[bold red]Timeout:[/bold red] Timed out waiting for session {sid} after {timeout}")
+                    raise typer.Exit(1)
+                    
+                try:
+                    resp = sessions.get_session(sid)
+                except Exception as e:
+                    console.print(f"\n[bold red]Error fetching session:[/bold red] {e}")
+                    raise typer.Exit(1)
+                    
+                status_enum = resp.get("status_enum")
+                term_state = get_stable_terminal_state(status_enum)
+                
+                status.update(f"[bold green]Current Status: {status_enum} (Terminal State: {term_state})[/bold green]")
+                
+                if term_state != "running" and term_state != "blocked":
+                    if until == "completed" and term_state == "completed":
+                        console.print(f"\n[bold green]Success:[/bold green] Session {sid} completed successfully.")
+                        raise typer.Exit(0)
+                    elif until == "completed" and term_state != "completed":
+                        console.print(f"\n[bold red]Failed:[/bold red] Session {sid} finished but reached non-completed terminal state '{term_state}'")
+                        raise typer.Exit(1)
+                    elif until == "terminal":
+                        console.print(f"\n[bold green]Terminal State Reached:[/bold green] Session {sid} reached state '{term_state}'.")
+                        if term_state == "completed":
+                            raise typer.Exit(0)
+                        else:
+                            raise typer.Exit(1)
+                
+                time_to_wait = min(interval, timeout_seconds - elapsed) if timeout_seconds > 0 else interval
+                if time_to_wait <= 0:
+                    continue
+                time.sleep(time_to_wait)
+    except KeyboardInterrupt:
+        console.print("\n[dim]Wait interrupted.[/dim]")
+        raise typer.Exit(130)
+
 
 # --- Knowledge ---
 @knowledge_app.command("list")
@@ -694,19 +813,51 @@ def create_schedule_cmd(
 def list_repos_cmd(
     org: Optional[str] = typer.Option(None, "--org"),
     json_output: bool = typer.Option(False, "--json"),
+    after: Optional[str] = typer.Option(None, "--after", help="Cursor for pagination"),
+    all_pages: bool = typer.Option(False, "--all", help="Fetch all pages sequentially"),
 ):
     """List repositories indexed for Devin."""
     if org: config.temporary_org_id = org
-    resp = repositories.list_repositories()
-    if isinstance(resp, list):
-        items = resp
-    elif isinstance(resp, dict):
-        items = resp.get("repositories") or resp.get("items") or resp.get("data") or []
-    else:
-        items = []
-    if json_output:
-        console.print(json.dumps(items, indent=2))
-        return
+    
+    items = []
+    current_after = after
+    has_next = False
+    next_cursor = None
+    
+    while True:
+        resp = repositories.list_repositories(after=current_after)
+        page_items = []
+        if isinstance(resp, list):
+            page_items = resp
+            has_next = False
+            next_cursor = None
+        elif isinstance(resp, dict):
+            page_items = resp.get("repositories") or resp.get("items") or resp.get("data") or []
+            has_next = resp.get("has_next_page", False)
+            next_cursor = resp.get("end_cursor") or resp.get("next_cursor")
+        else:
+            page_items = []
+            has_next = False
+            next_cursor = None
+            
+        items.extend(page_items)
+        
+        if not all_pages or not has_next or not next_cursor:
+            break
+            
+        current_after = next_cursor
+
+    final_resp = {
+        "repositories": items,
+        "end_cursor": next_cursor if not all_pages else None,
+        "has_next_page": has_next if not all_pages else False
+    }
+
+    if json_output or os.environ.get("DEVIN_OUTPUT_FORMAT") == "json":
+        if os.environ.get("DEVIN_OUTPUT_FORMAT") != "json":
+            print(json.dumps(final_resp, indent=2))
+        return final_resp
+        
     table = Table(title="Repositories")
     table.add_column("Path", style="cyan")
     table.add_column("Indexed", style="green")
@@ -728,7 +879,160 @@ def list_repos_cmd(
         )
         table.add_row(path, "Yes" if indexed else "No")
     console.print(table)
-    return resp
+    
+    if has_next and not all_pages:
+        console.print(f"[dim]More pages available. Use --after {next_cursor} to fetch next page, or --all to fetch all.[/dim]")
+        
+    return final_resp
+
+
+@repo_app.command("status")
+@handle_api_error
+def status_repo_cmd(
+    paths: List[str] = typer.Argument(..., help="Repository paths (owner/repo)"),
+    org: Optional[str] = typer.Option(None, "--org"),
+    json_output: bool = typer.Option(False, "--json"),
+):
+    """Get indexing status for one or more repositories."""
+    if org: config.temporary_org_id = org
+    
+    results = []
+    exit_code = 0
+    
+    from concurrent.futures import ThreadPoolExecutor
+
+    def fetch_status(path):
+        try:
+            resp = repositories.get_indexing_status(path)
+            if isinstance(resp, dict):
+                if "repo_path" not in resp:
+                    resp["repo_path"] = path
+                indexing_enabled = resp.get("indexing_enabled", False)
+                item_exit = 0 if indexing_enabled else 1
+            else:
+                resp = {"repo_path": path, "indexing_enabled": False, "raw": resp}
+                item_exit = 1
+            return (path, resp, item_exit, None)
+        except Exception as e:
+            return (path, None, None, e)
+
+    results_map = {}
+    errors_map = {}
+    exit_codes_map = {}
+    
+    max_workers = min(10, len(paths))
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(fetch_status, path): path for path in paths}
+        for future in futures:
+            path = futures[future]
+            try:
+                p, resp, item_exit, err = future.result()
+                if err:
+                    errors_map[path] = err
+                else:
+                    results_map[path] = resp
+                    exit_codes_map[path] = item_exit
+            except Exception as ex:
+                errors_map[path] = ex
+
+    for path in paths:
+        if path in errors_map:
+            e = errors_map[path]
+            if isinstance(e, APIError):
+                if e.status_code == 404:
+                    resp = {
+                        "repo_path": path,
+                        "indexing_enabled": False,
+                        "error": "Not registered in Devin (404)"
+                    }
+                    results.append(resp)
+                    if len(paths) == 1:
+                        exit_code = 2
+                else:
+                    if len(paths) == 1:
+                        is_json = os.environ.get("DEVIN_OUTPUT_FORMAT") == "json" or json_output
+                        if is_json:
+                            try:
+                                err_json = e.response.json()
+                            except Exception:
+                                err_json = {"error": str(e)}
+                            print(json.dumps(err_json, indent=2))
+                        else:
+                            console.print(f"[bold red]API Error:[/bold red] {e}")
+                        raise typer.Exit(3)
+                    else:
+                        results.append({
+                            "repo_path": path,
+                            "indexing_enabled": False,
+                            "error": str(e)
+                        })
+                        exit_code = 3
+            else:
+                if len(paths) == 1:
+                    is_json = os.environ.get("DEVIN_OUTPUT_FORMAT") == "json" or json_output
+                    if is_json:
+                        print(json.dumps({"error": str(e)}, indent=2))
+                    else:
+                        console.print(f"[bold red]Error:[/bold red] {e}")
+                    raise typer.Exit(3)
+                else:
+                    results.append({
+                        "repo_path": path,
+                        "indexing_enabled": False,
+                        "error": str(e)
+                    })
+                    exit_code = 3
+        else:
+            resp = results_map[path]
+            item_exit = exit_codes_map[path]
+            results.append(resp)
+            if len(paths) == 1:
+                exit_code = item_exit
+                    
+    if len(paths) == 1:
+        final_result = results[0]
+    else:
+        final_result = {"results": results}
+
+    if json_output or os.environ.get("DEVIN_OUTPUT_FORMAT") == "json":
+        if os.environ.get("DEVIN_OUTPUT_FORMAT") != "json":
+            print(json.dumps(final_result, indent=2))
+        return final_result
+            
+    if len(paths) == 1:
+        res = results[0]
+        if "error" in res:
+            console.print(f"[bold red]Error:[/bold red] {res['error']}")
+        else:
+            console.print(Panel(json.dumps(res, indent=2), title=f"Status for {paths[0]}"))
+    else:
+        table = Table(title="Repository Indexing Status")
+        table.add_column("Path", style="cyan")
+        table.add_column("Indexing Enabled", style="magenta")
+        table.add_column("Status / Details")
+        
+        for res in results:
+            path = res.get("repo_path", "")
+            enabled = "Yes" if res.get("indexing_enabled") else "No"
+            
+            if "error" in res:
+                details = f"[red]{res['error']}[/red]"
+            else:
+                latest = res.get("latest_index") or {}
+                status = latest.get("status", "unknown") if latest else "N/A"
+                branch = latest.get("branch_name", "") if latest else ""
+                details = f"Status: {status}" + (f" ({branch})" if branch else "")
+                
+            table.add_row(path, enabled, details)
+        console.print(table)
+        
+    if len(paths) == 1:
+        raise typer.Exit(exit_code)
+    else:
+        if exit_code >= 3:
+            raise typer.Exit(exit_code)
+        return final_result
+
 
 @repo_app.command("index")
 @handle_api_error
