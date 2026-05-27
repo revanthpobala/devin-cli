@@ -4,7 +4,7 @@ version = "1.3.5"
 description = "Unofficial CLI for Devin AI - The first AI Software Engineer"
 readme = "README.md"
 authors = [
-    { name = "revanth", email = "revanth@example.com" },
+    { name = "Revanth Pobala", email = "revanthpobala@gmail.com" },
 ]
 license = "MIT"
 keywords = ["devin", "ai", "agent", "software-engineer", "autonomous", "cli", "terminal", "cognition", "automation"]
