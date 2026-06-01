@@ -110,6 +110,9 @@ def test_repos_status_other_error(mock_status):
     mock_status.side_effect = APIError("Forbidden", 403)
     
     result = runner.invoke(app, ["repos", "status", "owner/repo"])
+    print(result.stdout)
+    if result.exception:
+        print(result.exception)
     assert result.exit_code == 3
     assert "API Error" in result.stdout or "Forbidden" in result.stdout
 
@@ -118,4 +121,71 @@ def test_sessions_wait_negative_timeout():
     result = runner.invoke(app, ["sessions", "wait", "sess_123", "--timeout", "-10s"])
     assert result.exit_code == 1
     assert "cannot be negative" in result.stdout
+
+@patch("devin_cli.cli.sessions.list_sessions")
+def test_sessions_list_pagination(mock_list):
+    mock_list.side_effect = [
+        {
+            "items": [{"session_id": "sess_1"}],
+            "has_next_page": True,
+            "end_cursor": "cur_1"
+        },
+        {
+            "items": [{"session_id": "sess_2"}],
+            "has_next_page": False,
+            "end_cursor": None
+        }
+    ]
+    
+    with patch("devin_cli.cli.config") as mock_config:
+        mock_config.api_version = "v3"
+        result = runner.invoke(app, ["sessions", "list", "--all"])
+        
+    assert result.exit_code == 0
+    assert "sess_1" in result.stdout
+    assert "sess_2" in result.stdout
+    assert mock_list.call_count == 2
+
+@patch("devin_cli.cli.sessions.get_session_messages")
+def test_sessions_messages_pagination(mock_get_messages):
+    mock_get_messages.side_effect = [
+        {
+            "messages": [{"message": "hello", "role": "user"}],
+            "has_next_page": True,
+            "end_cursor": "cur_1"
+        },
+        {
+            "messages": [{"message": "world", "role": "assistant"}],
+            "has_next_page": False,
+            "end_cursor": None
+        }
+    ]
+    
+    with patch("devin_cli.cli.config") as mock_config:
+        mock_config.api_version = "v3"
+        result = runner.invoke(app, ["sessions", "messages", "sess_123", "--all"])
+        
+    assert result.exit_code == 0
+    assert "hello" in result.stdout
+    assert "world" in result.stdout
+    assert mock_get_messages.call_count == 2
+
+@patch("devin_cli.cli.consumption.get_session_consumption")
+@patch("devin_cli.cli.sessions.get_session")
+def test_sessions_cost_v3(mock_get_session, mock_consumption):
+    mock_get_session.return_value = {
+        "session_id": "sess_123",
+        "status_enum": "completed",
+        "acus_consumed": 15
+    }
+    mock_consumption.return_value = {"breakdown": "details"}
+    
+    with patch("devin_cli.cli.config") as mock_config:
+        mock_config.api_version = "v3"
+        result = runner.invoke(app, ["sessions", "cost", "sess_123"])
+        
+    assert result.exit_code == 0
+    assert "15" in result.stdout
+    assert mock_consumption.call_count == 1
+    assert "breakdown" in result.stdout
 

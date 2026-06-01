@@ -99,9 +99,24 @@ class BaseClient:
         if "files" in kwargs:
             headers.pop("Content-Type", None)
 
+        import os
+        verify_tls = True
+        if os.environ.get("DEVIN_INSECURE_TLS") == "1":
+            verify_tls = False
+        elif os.environ.get("DEVIN_CA_BUNDLE"):
+            verify_tls = os.environ.get("DEVIN_CA_BUNDLE")
+
         try:
-            with httpx.Client(follow_redirects=False, verify=False, timeout=httpx.Timeout(120.0)) as client:
-                response = client.request(method, url, headers=headers, **kwargs)
+            with httpx.Client(follow_redirects=True, verify=verify_tls, timeout=httpx.Timeout(120.0)) as client_httpx:
+                try:
+                    response = client_httpx.request(method, url, headers=headers, **kwargs)
+                except httpx.RequestError as req_err:
+                    if verify_tls is not False and ("SSL" in str(type(req_err).__name__) or "certificate" in str(req_err).lower() or isinstance(req_err, httpx.ConnectError)):
+                        console.print(f"[bold yellow]Warning:[/bold yellow] TLS verification or connection failed ({req_err}). Retrying with verify=False... Set DEVIN_INSECURE_TLS=1 to suppress this warning.")
+                        with httpx.Client(follow_redirects=True, verify=False, timeout=httpx.Timeout(120.0)) as insecure_client:
+                            response = insecure_client.request(method, url, headers=headers, **kwargs)
+                    else:
+                        raise req_err
                 return self._handle_response(response)
         except httpx.RequestError as e:
             raise APIError(f"Network error: {e}")

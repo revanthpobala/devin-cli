@@ -75,8 +75,11 @@ def get_session(session_id: str):
             raise
         raise
 
-def get_session_messages(session_id: str):
-    return client.get(f"sessions/{session_id}/messages")
+def get_session_messages(session_id: str, limit: int = 100, after: Optional[str] = None):
+    params = {"limit": limit}
+    if after:
+        params["after"] = after
+    return client.get(f"sessions/{session_id}/messages", params=params)
 
 def send_message(session_id: str, message: str):
     return client.post(f"sessions/{session_id}/messages", json={"message": message})

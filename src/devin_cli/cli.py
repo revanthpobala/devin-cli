@@ -195,6 +195,21 @@ def configure(
     console.print(f"[green]Configuration saved to {config.config_file}[/green]")
     return None
 
+def get_stable_terminal_state(status_enum: Optional[str]) -> str:
+    if not status_enum:
+        return "running"
+    status = status_enum.lower()
+    if status == "finished":
+        return "completed"
+    elif status in ("failed", "error"):
+        return "failed"
+    elif status in ("stopped", "cancelled", "terminated"):
+        return "terminated"
+    elif status == "blocked":
+        return "blocked"
+    else:
+        return "running"
+
 # --- Sessions ---
 @session_app.command("create")
 @handle_api_error
@@ -296,35 +311,23 @@ def create_session_cmd(
             console.print(f"[bold cyan]URL:[/bold cyan] {resp.get('url')}")
 
             if wait:
-                terminal_statuses = {"stopped", "finished", "error", "cancelled", "failed"}
                 console.print(f"[dim]Waiting for session to complete (polling every {interval}s)...[/dim]")
                 with console.status("[bold green]Running...[/bold green]") as s:
                     while True:
                         time.sleep(interval)
                         poll = sessions.get_session(sid)
-                        current_status = poll.get("status_enum", "").lower()
+                        current_status = poll.get("status_enum", "")
+                        stable_state = get_stable_terminal_state(current_status)
                         s.update(f"[bold green]Status: {current_status}[/bold green]")
-                        if current_status in terminal_statuses:
+                        if stable_state not in ("running", "blocked"):
                             console.print(f"[bold green]Session finished:[/bold green] {current_status}")
                             break
         else:
             console.print("[yellow]Session created, but no ID returned immediately (awaiting advanced mode setup).[/yellow]")
         
     return resp
-def get_stable_terminal_state(status_enum: Optional[str]) -> str:
-    if not status_enum:
-        return "running"
-    status = status_enum.lower()
-    if status == "finished":
-        return "completed"
-    elif status in ("failed", "error"):
-        return "failed"
-    elif status in ("stopped", "cancelled", "terminated"):
-        return "terminated"
-    elif status == "blocked":
-        return "blocked"
-    else:
-        return "running"
+        
+    return resp
 
 
 @session_app.command("list")
@@ -333,28 +336,76 @@ def list_sessions_cmd(
     limit: int = 10,
     org: Optional[str] = typer.Option(None, "--org"),
     json_output: bool = typer.Option(False, "--json"),
+    after: Optional[str] = typer.Option(None, "--after", help="Cursor for pagination (v3 only)"),
+    all_pages: bool = typer.Option(False, "--all", help="Fetch all pages sequentially (v3 only)"),
 ):
     """List sessions."""
     if org: config.temporary_org_id = org
-    resp = sessions.list_sessions(limit=limit)
-    sess_list = resp.get("items", resp.get("sessions", []))
-    
-    for s in sess_list:
+
+    if (after or all_pages) and config.api_version == "v1":
+        console.print("[bold yellow]Warning:[/bold yellow] Pagination flags (--after, --all) are only supported in v3 API.")
+        raise typer.Exit(1)
+
+    items = []
+    current_after = after
+    current_offset = 0
+    has_next = False
+    next_cursor = None
+    total = None
+
+    while True:
+        kwargs = {"limit": limit}
+        if config.api_version == "v3" and current_after:
+            kwargs["after"] = current_after
+        elif config.api_version == "v1":
+            kwargs["offset"] = current_offset
+        
+        resp = sessions.list_sessions(**kwargs)
+        page_items = resp.get("items", resp.get("sessions", []))
+        items.extend(page_items)
+        
+        if total is None:
+            total = resp.get("total")
+
+        if config.api_version == "v3":
+            has_next = resp.get("has_next_page", False)
+            next_cursor = resp.get("end_cursor")
+        else:
+            has_next = len(page_items) == limit
+            current_offset += limit
+            
+        if not all_pages or not has_next or (config.api_version == "v3" and not next_cursor):
+            break
+            
+        current_after = next_cursor
+
+    for s in items:
         if isinstance(s, dict):
             s["terminal_state"] = get_stable_terminal_state(s.get("status_enum"))
             
-    if not sess_list and config.api_token and config.api_token.startswith("cog_"):
+    if not items and config.api_token and config.api_token.startswith("cog_"):
         console.print("[yellow]Warning: Service tokens (cog_) may only have visibility into sessions they explicitly created, not all organization sessions.[/yellow]")
         
-    if json_output:
-        console.print(json.dumps(sess_list, indent=2))
+    final_resp = {
+        "items": items,
+        "total": total if total is not None else len(items),
+    }
+    if not all_pages:
+        final_resp["end_cursor"] = next_cursor
+        final_resp["has_next_page"] = has_next
+
+    import os
+    if json_output or os.environ.get("DEVIN_OUTPUT_FORMAT") == "json":
+        if os.environ.get("DEVIN_OUTPUT_FORMAT") != "json":
+            console.print(json.dumps(final_resp, indent=2))
+        return final_resp
     else:
-        table = Table(title="Devin Sessions")
+        table = Table(title="Devin Sessions" + (f" ({total} total)" if total is not None else ""))
         table.add_column("ID", style="cyan")
         table.add_column("Status", style="magenta")
         table.add_column("Terminal State", style="blue")
         table.add_column("Title")
-        for s in sess_list:
+        for s in items:
             table.add_row(
                 s.get("session_id"),
                 s.get("status_enum"),
@@ -362,8 +413,12 @@ def list_sessions_cmd(
                 s.get("title") or s.get("prompt", "")[:50]
             )
         console.print(table)
+        
+        if not all_pages and next_cursor:
+            console.print(f"[dim]More sessions available. Next cursor: {next_cursor}[/dim]")
+            console.print(f"[dim]Use --after {next_cursor} or --all to see them.[/dim]")
     
-    return resp
+    return final_resp
 
 
 @session_app.command("get")
@@ -371,6 +426,7 @@ def list_sessions_cmd(
 def get_session_cmd(
     session_id: Optional[str] = typer.Argument(None),
     org: Optional[str] = typer.Option(None, "--org"),
+    json_output: bool = typer.Option(False, "--json"),
 ):
     """Get detailed session info."""
     if org: config.temporary_org_id = org
@@ -378,6 +434,13 @@ def get_session_cmd(
     resp = sessions.get_session(sid)
     if isinstance(resp, dict):
         resp["terminal_state"] = get_stable_terminal_state(resp.get("status_enum"))
+    
+    import os
+    if json_output or os.environ.get("DEVIN_OUTPUT_FORMAT") == "json":
+        if os.environ.get("DEVIN_OUTPUT_FORMAT") != "json":
+            console.print(json.dumps(resp, indent=2))
+        return resp
+        
     console.print(Panel(json.dumps(resp, indent=2), title=f"Session {sid}"))
     
     return resp
@@ -387,11 +450,19 @@ def get_session_cmd(
 def session_insights_cmd(
     session_id: Optional[str] = typer.Argument(None),
     org: Optional[str] = typer.Option(None, "--org"),
+    json_output: bool = typer.Option(False, "--json"),
 ):
     """Get technical insights for a session (ACUs, etc)."""
     if org: config.temporary_org_id = org
     sid = session_id or get_current_session_id()
     resp = sessions.get_session_insights(sid)
+    
+    import os
+    if json_output or os.environ.get("DEVIN_OUTPUT_FORMAT") == "json":
+        if os.environ.get("DEVIN_OUTPUT_FORMAT") != "json":
+            console.print(json.dumps(resp, indent=2))
+        return resp
+        
     if isinstance(resp, dict) and "error" in resp:
         console.print(f"[bold yellow]Note:[/bold yellow] {resp['error']}")
         console.print("Tip: Switch to v3 with [bold cyan]devin configure[/bold cyan] or use [bold cyan]--profile [v3-profile][/bold cyan]")
@@ -405,22 +476,63 @@ def session_insights_cmd(
 def session_cost_cmd(
     session_id: Optional[str] = typer.Argument(None, help="Specific session ID to check cost for"),
     org: Optional[str] = typer.Option(None, "--org"),
+    json_output: bool = typer.Option(False, "--json"),
 ):
     """View ACU consumption."""
     if org: config.temporary_org_id = org
+    
+    import os
+    is_json = json_output or os.environ.get("DEVIN_OUTPUT_FORMAT") == "json"
+    
     if session_id:
-        resp = sessions.get_session(session_id)
+        if config.api_version == "v3":
+            import concurrent.futures
+            
+            def fetch_session():
+                return sessions.get_session(session_id)
+                
+            def fetch_consumption():
+                try:
+                    return consumption.get_session_consumption(session_id)
+                except Exception:
+                    return None
+                    
+            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+                f_session = executor.submit(fetch_session)
+                f_cons = executor.submit(fetch_consumption)
+                
+                resp = f_session.result()
+                cons_resp = f_cons.result()
+        else:
+            resp = sessions.get_session(session_id)
+            cons_resp = None
+
         acus = resp.get("acus_consumed") or resp.get("acu_used")
         cost_data = {
             "session_id": resp.get("session_id"),
             "status": resp.get("status_enum"),
             "acus_consumed": acus,
         }
+        
+        if cons_resp:
+            cost_data["breakdown"] = cons_resp
+
+        if is_json:
+            if not os.environ.get("DEVIN_OUTPUT_FORMAT") == "json":
+                console.print(json.dumps(cost_data, indent=2))
+            return cost_data
+
         console.print(Panel(json.dumps(cost_data, indent=2), title=f"Session Cost: {session_id}"))
         if acus is None:
             console.print("[yellow]ACU data unavailable — this may be a v1 API session or a service token without cost visibility.[/yellow]")
+        return cost_data
     else:
         resp = consumption.get_daily_consumption_breakdown()
+        if is_json:
+            if not os.environ.get("DEVIN_OUTPUT_FORMAT") == "json":
+                console.print(json.dumps(resp, indent=2))
+            return resp
+            
         console.print(Panel(json.dumps(resp, indent=2), title="Daily Consumption"))
         
     return resp
@@ -455,19 +567,73 @@ def send_message_cmd(
 def list_messages_cmd(
     session_id: Optional[str] = typer.Argument(None),
     org: Optional[str] = typer.Option(None, "--org"),
+    json_output: bool = typer.Option(False, "--json"),
+    limit: int = 100,
+    after: Optional[str] = typer.Option(None, "--after", help="Cursor for pagination (v3 only)"),
+    all_pages: bool = typer.Option(False, "--all", help="Fetch all pages sequentially"),
 ):
     """List messages in a session."""
     if org: config.temporary_org_id = org
     sid = session_id or get_current_session_id()
-    resp = sessions.get_session_messages(sid)
-    msgs = resp.get("messages", [])
+    
+    if (after or all_pages) and config.api_version == "v1":
+        console.print("[bold yellow]Warning:[/bold yellow] Pagination flags (--after, --all) for messages are limited in v1 API since it fetches the full session payload locally.")
+
+    msgs = []
+    current_after = after
+    current_offset = 0
+    has_next = False
+    next_cursor = None
+    
+    while True:
+        kwargs = {"limit": limit}
+        if config.api_version == "v3" and current_after:
+            kwargs["after"] = current_after
+        elif config.api_version == "v1":
+            kwargs["offset"] = current_offset
+            
+        resp = sessions.get_session_messages(sid, **kwargs)
+        page_msgs = resp.get("messages", [])
+        msgs.extend(page_msgs)
+        
+        if config.api_version == "v3":
+            has_next = resp.get("has_next_page", False)
+            next_cursor = resp.get("end_cursor")
+        else:
+            has_next = len(page_msgs) == limit
+            current_offset += limit
+            
+        if not all_pages or not has_next or (config.api_version == "v3" and not next_cursor):
+            break
+            
+        current_after = next_cursor
+
+    import os
+    is_json = json_output or os.environ.get("DEVIN_OUTPUT_FORMAT") == "json"
+    
+    final_resp = {
+        "messages": msgs,
+    }
+    if not all_pages and config.api_version == "v3":
+        final_resp["end_cursor"] = next_cursor
+        final_resp["has_next_page"] = has_next
+        
+    if is_json:
+        if not os.environ.get("DEVIN_OUTPUT_FORMAT") == "json":
+            console.print(json.dumps(final_resp if all_pages or next_cursor else msgs, indent=2))
+        return final_resp if all_pages or next_cursor else resp
+        
     for m in msgs:
         role = m.get("role", "unknown")
         content = m.get("message", "") or m.get("content", "")
         console.print(f"[bold cyan]{role}:[/bold cyan] {content}")
         console.print("---")
         
-    return resp
+    if not all_pages and next_cursor:
+        console.print(f"[dim]More messages available. Next cursor: {next_cursor}[/dim]")
+        console.print(f"[dim]Use --after {next_cursor} or --all to see them.[/dim]")
+        
+    return final_resp if all_pages or next_cursor else resp
 
 @session_app.command("terminate")
 @handle_api_error
@@ -483,6 +649,72 @@ def terminate_session_cmd(
         console.print(f"[green]Session {sid} terminated.[/green]")
     return None
 
+@session_app.command("archive")
+@handle_api_error
+def archive_session_cmd(
+    session_id: Optional[str] = typer.Argument(None),
+    org: Optional[str] = typer.Option(None, "--org"),
+):
+    """Archive a session (v3 only)."""
+    if org: config.temporary_org_id = org
+    sid = session_id or get_current_session_id()
+    if typer.confirm(f"Archive session {sid}?"):
+        if config.api_version == "v1":
+            console.print("[bold red]Error:[/bold red] Archive is only supported in v3 API.")
+            raise typer.Exit(1)
+        sessions.archive_session(sid)
+        console.print(f"[green]Session {sid} archived.[/green]")
+    return None
+
+@session_app.command("attachments")
+@handle_api_error
+def get_session_attachments_cmd(
+    session_id: Optional[str] = typer.Argument(None),
+    org: Optional[str] = typer.Option(None, "--org"),
+    json_output: bool = typer.Option(False, "--json"),
+):
+    """Get session attachments (v3 only)."""
+    if org: config.temporary_org_id = org
+    sid = session_id or get_current_session_id()
+    if config.api_version == "v1":
+        console.print("[bold red]Error:[/bold red] Attachments are only supported in v3 API.")
+        raise typer.Exit(1)
+        
+    resp = sessions.get_session_attachments(sid)
+    
+    import os
+    if json_output or os.environ.get("DEVIN_OUTPUT_FORMAT") == "json":
+        if os.environ.get("DEVIN_OUTPUT_FORMAT") != "json":
+            console.print(json.dumps(resp, indent=2))
+        return resp
+        
+    console.print(Panel(json.dumps(resp, indent=2), title=f"Attachments for {sid}"))
+    return resp
+
+@session_app.command("tags")
+@handle_api_error
+def get_session_tags_cmd(
+    session_id: Optional[str] = typer.Argument(None),
+    org: Optional[str] = typer.Option(None, "--org"),
+    json_output: bool = typer.Option(False, "--json"),
+):
+    """Get session tags (v3 only)."""
+    if org: config.temporary_org_id = org
+    sid = session_id or get_current_session_id()
+    if config.api_version == "v1":
+        console.print("[bold red]Error:[/bold red] Tags fetching is only supported in v3 API.")
+        raise typer.Exit(1)
+        
+    resp = sessions.get_session_tags(sid)
+    
+    import os
+    if json_output or os.environ.get("DEVIN_OUTPUT_FORMAT") == "json":
+        if os.environ.get("DEVIN_OUTPUT_FORMAT") != "json":
+            console.print(json.dumps(resp, indent=2))
+        return resp
+        
+    console.print(Panel(json.dumps(resp, indent=2), title=f"Tags for {sid}"))
+    return resp
 
 def parse_duration(duration_str: str) -> float:
     if not duration_str:
@@ -994,9 +1226,10 @@ def status_repo_cmd(
     else:
         final_result = {"results": results}
 
-    if json_output or os.environ.get("DEVIN_OUTPUT_FORMAT") == "json":
-        if os.environ.get("DEVIN_OUTPUT_FORMAT") != "json":
-            print(json.dumps(final_result, indent=2))
+    is_json = json_output or os.environ.get("DEVIN_OUTPUT_FORMAT") == "json"
+    if is_json:
+        if not os.environ.get("DEVIN_OUTPUT_FORMAT") == "json":
+            console.print(json.dumps(final_result, indent=2))
         return final_result
             
     if len(paths) == 1:

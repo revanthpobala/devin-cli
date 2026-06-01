@@ -55,9 +55,11 @@ def create_session(
 def get_session(session_id: str):
     return client.get(f"sessions/{session_id}")
 
-def get_session_messages(session_id: str):
+def get_session_messages(session_id: str, limit: int = 100, offset: int = 0):
     resp = get_session(session_id)
-    return {"messages": resp.get("messages", [])}
+    msgs = resp.get("messages", [])
+    # Slice the messages array for basic offset pagination since v1 doesn't support an endpoint
+    return {"messages": msgs[offset:offset+limit]}
 
 def get_session_insights(session_id: str):
     return {"error": "Insights are not available in the v1 API. Please upgrade to v3."}
