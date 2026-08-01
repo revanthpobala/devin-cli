@@ -9,7 +9,11 @@ def list_sessions(limit: int = 100, after: Optional[str] = None):
 
 def create_session(
     prompt: str,
+    devin_mode: Optional[str] = None,
     advanced_mode: Optional[str] = None,
+    platform: Optional[str] = None,
+    resumable: Optional[bool] = None,
+    structured_output_required: Optional[bool] = None,
     attachment_urls: Optional[List[str]] = None,
     bypass_approval: bool = False,
     knowledge_ids: Optional[List[str]] = None,
@@ -28,10 +32,18 @@ def create_session(
     data = {
         "prompt": prompt,
     }
+    if devin_mode:
+        data["devin_mode"] = devin_mode
     if bypass_approval:
         data["bypass_approval"] = bypass_approval
     if advanced_mode:
         data["advanced_mode"] = advanced_mode
+    if platform:
+        data["platform"] = platform
+    if resumable is not None:
+        data["resumable"] = resumable
+    if structured_output_required is not None:
+        data["structured_output_required"] = structured_output_required
     if attachment_urls:
         data["attachment_urls"] = attachment_urls
     if knowledge_ids:
@@ -57,7 +69,14 @@ def create_session(
     if create_as_user_id:
         data["create_as_user_id"] = create_as_user_id
     if structured_output_schema:
-        data["structured_output_schema"] = structured_output_schema
+        if isinstance(structured_output_schema, str):
+            import json
+            try:
+                data["structured_output_schema"] = json.loads(structured_output_schema)
+            except Exception:
+                data["structured_output_schema"] = structured_output_schema
+        else:
+            data["structured_output_schema"] = structured_output_schema
 
     return client.post("sessions", json=data)
 
@@ -110,3 +129,7 @@ def list_sessions_with_insights(limit: int = 100, after: Optional[str] = None):
 
 def get_session_insights(session_id: str):
     return client.get(f"sessions/{session_id}/insights")
+
+def generate_session_insights(session_id: str):
+    return client.post(f"sessions/{session_id}/insights/generate")
+

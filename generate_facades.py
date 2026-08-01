@@ -1,6 +1,11 @@
 import os
 
-modules = ["attachments", "consumption", "knowledge", "members", "organizations", "playbooks", "repositories", "schedules", "secrets", "sessions"]
+modules = [
+    "attachments", "consumption", "knowledge", "members", "organizations",
+    "playbooks", "repositories", "schedules", "secrets", "sessions",
+    "pr_reviews", "tags", "blueprints", "ip_access_list", "guardrail_violations",
+    "code_scans", "queue", "audit_logs", "service_users"
+]
 
 for mod in modules:
     content = f"""from devin_cli.config import config
@@ -19,3 +24,4 @@ def __getattr__(name):
 """
     with open(f"src/devin_cli/api/{mod}.py", "w") as f:
         f.write(content)
+

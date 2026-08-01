@@ -126,11 +126,14 @@ Profiles are stored in `~/.config/devin/config.json` — fully isolated includin
 | :--- | :--- | :--- |
 | `[prompt]` | arg | Task prompt |
 | `--file`, `-f` | path | Read prompt from file |
-| `--title`, `-t` | str | Session title |
+| `--title`, `-t` | str | Custom session title |
+| `--devin-mode`, `--mode`, `--model` | str | Agent mode / model: `normal` \| `fast` \| `lite` \| `ultra` \| `fusion` (v3) |
+| `--platform` | str | VM platform (e.g. `windows`) or outpost pool (v3) |
+| `--resumable` / `--no-resumable` | flag | Preserve session VM state after stopping (v3) |
 | `--wait`, `-w` | flag | Block until session finishes |
 | `--interval` | int | Polling interval for `--wait` (default: 5s) |
 | `--max-acu` | int | ACU spend cap |
-| `--force` | flag | Skip duplicate detection |
+| `--force` | flag | Skip duplicate prompt detection |
 | `--advanced-mode` | str | `analyze` \| `create_playbook` \| `improve_playbook` \| `batch` \| `manage_knowledge` |
 | `--playbook-id` | str | Playbook to apply (v3) |
 | `--child-playbook-id` | str | Playbook for each sub-session in `batch` mode (v3) |
@@ -139,9 +142,11 @@ Profiles are stored in `~/.config/devin/config.json` — fully isolated includin
 | `--repo` | str (repeatable) | Repo URLs to attach (v3) |
 | `--knowledge-id` | str (repeatable) | Knowledge IDs to inject |
 | `--secret-id` | str (repeatable) | Secret IDs to inject (v3) |
+| `--session-secret` | str (repeatable) | Temporary session secret `KEY=VALUE` (v3) |
 | `--session-link` | str (repeatable) | Session URLs as context (v3) |
 | `--attachment-url` | str (repeatable) | Attachment URLs (v3) |
 | `--structured-output-schema` | str | JSON schema for structured response (v3) |
+| `--structured-output-required` | flag | Require structured output tool call (v3) |
 | `--create-as-user-id` | str | Enterprise: impersonate a user (v3) |
 | `--org` | str | Override org ID |
 
@@ -149,12 +154,37 @@ Profiles are stored in `~/.config/devin/config.json` — fully isolated includin
 ```bash
 # No browser interaction required
 devin sessions create \
+  --devin-mode fast \
   --advanced-mode batch \
   --playbook-id <orchestrator-id> \
   --child-playbook-id <worker-id> \
   --bypass-approval \
   "Process each file in the attached CSV"
 ```
+
+### PR Reviews (`devin pr-reviews <cmd>`)
+
+| Command | Key Flags | Description |
+| :--- | :--- | :--- |
+| `trigger` | `--pr-url` | Trigger a Devin code review for a pull request |
+| `get` | `--pr-url`, `--repo-path`, `--pr-number` | Get latest review status for a pull request |
+
+### Organization Session Tags (`devin tags <cmd>`)
+
+| Command | Description |
+| :--- | :--- |
+| `list` | List allowed session tags for the organization |
+| `append` | Append tags to organization allowed list (`--tag`) |
+| `replace` | Replace full set of allowed tags (`--tag`) |
+| `clear` | Clear all allowed tags |
+
+### Snapshot Blueprints (`devin blueprints <cmd>`)
+
+| Command | Description |
+| :--- | :--- |
+| `list` | List snapshot blueprints for the organization |
+| `trigger-build` | Trigger a manual snapshot build |
+| `list-builds` | List history of snapshot builds |
 
 ### Knowledge (`devin knowledge <cmd>`)
 
@@ -202,12 +232,18 @@ devin sessions create \
 | `upload <file>` | Upload a file |
 | `download <id>` | Download an attachment |
 
-### Enterprise (`devin enterprise <cmd>`)
+### Enterprise Management (`devin enterprise <cmd>`)
 
-| Command | Description |
+| Command Group / Command | Description |
 | :--- | :--- |
 | `whoami` | Show current identity |
 | `list-orgs` | List accessible organizations |
+| `queue` | Get session queue health status |
+| `audit-logs` | List enterprise audit logs (`--limit`, `--order`) |
+| `ip-access-list` | `list` \| `add` \| `replace` \| `clear` enterprise IP allowlists |
+| `guardrails` | `list` guardrail violations (`--session-id`, `--guardrail-id`) |
+| `code-scans` | `findings` \| `metrics` \| `remediate` code scan findings |
+| `service-users` | `list` service users, `create-key`, `rotate-key`, `revoke-key` |
 
 ### Chain (`devin chain`)
 

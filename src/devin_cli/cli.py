@@ -22,7 +22,12 @@ from rich.panel import Panel
 from rich.live import Live
 from rich.text import Text
 from devin_cli.config import config
-from devin_cli.api import sessions, knowledge, playbooks, secrets, attachments, repositories, schedules, organizations, members, consumption
+from devin_cli.api import (
+    sessions, knowledge, playbooks, secrets, attachments, repositories,
+    schedules, organizations, members, consumption, pr_reviews, tags,
+    blueprints, ip_access_list, guardrail_violations, code_scans, queue,
+    audit_logs, service_users
+)
 from devin_cli.api.client import client, APIError
 import webbrowser
 import sys
@@ -64,6 +69,9 @@ secret_app = typer.Typer(help=f"Manage organization secrets{v1_tag}", no_args_is
 schedule_app = typer.Typer(help=f"Manage session schedules{v3_only}", no_args_is_help=True)
 attachment_app = typer.Typer(help=f"Manage session attachments{v1_tag}", no_args_is_help=True)
 repo_app = typer.Typer(help=f"Manage organization repositories{v3_only}", no_args_is_help=True)
+pr_review_app = typer.Typer(help=f"Manage Devin PR reviews{v3_only}", no_args_is_help=True)
+tag_app = typer.Typer(help=f"Manage organization session tags{v3_only}", no_args_is_help=True)
+blueprint_app = typer.Typer(help=f"Manage snapshot setup and builds{v3_only}", no_args_is_help=True)
 enterprise_app = typer.Typer(help=f"Enterprise-scoped operations{v3_only}", no_args_is_help=True)
 
 app.add_typer(session_app, name="sessions", help="Manage Devin sessions")
@@ -73,6 +81,10 @@ app.add_typer(playbook_app, name="playbooks", help="Manage team playbooks")
 app.add_typer(secret_app, name="secrets", help="Manage organization secrets")
 app.add_typer(schedule_app, name="schedules", help="Manage session schedules")
 app.add_typer(repo_app, name="repos", help="Manage organization repositories")
+app.add_typer(pr_review_app, name="pr-reviews", help="Manage Devin PR reviews")
+app.add_typer(pr_review_app, name="pr", hidden=True)
+app.add_typer(tag_app, name="tags", help="Manage organization session tags")
+app.add_typer(blueprint_app, name="blueprints", help="Manage snapshot setup and builds")
 app.add_typer(enterprise_app, name="enterprise", help="Enterprise management")
 
 ASCII_LOGO = r"""
@@ -112,21 +124,21 @@ def handle_api_error(func):
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
         import os
-        is_json = os.environ.get("DEVIN_OUTPUT_FORMAT") == "json"
         original_print = console.print
         try:
-            if is_json:
+            if os.environ.get("DEVIN_OUTPUT_FORMAT") == "json":
                 console.print = lambda *a, **k: None
 
             result = func(*args, **kwargs)
             
-            if is_json:
+            if os.environ.get("DEVIN_OUTPUT_FORMAT") == "json":
                 console.print = original_print
                 if result is not None:
-                    print(json.dumps(result, indent=2))
+                    console.print(json.dumps(result, indent=2))
                     
             return result
         except BaseException as e:
+            is_json = os.environ.get("DEVIN_OUTPUT_FORMAT") == "json"
             if is_json:
                 console.print = original_print
             if isinstance(e, typer.Exit):
@@ -217,6 +229,9 @@ def create_session_cmd(
     prompt: Optional[str] = typer.Argument(None, help="The prompt for the session"),
     file: Optional[Path] = typer.Option(None, "--file", "-f", help="Read prompt from file"),
     title: Optional[str] = typer.Option(None, "--title", "-t", help="Custom session title"),
+    devin_mode: Optional[str] = typer.Option(None, "--devin-mode", "--mode", "--model", help="Devin agent mode / model: normal | fast | lite | ultra | fusion (v3 only)"),
+    platform: Optional[str] = typer.Option(None, "--platform", help="VM platform (e.g. windows) or outpost pool name (v3 only)"),
+    resumable: Optional[bool] = typer.Option(None, "--resumable/--no-resumable", help="Preserve session VM state after stopping (v3 only)"),
     org: Optional[str] = typer.Option(None, "--org", help="Override organization ID"),
     max_acu: Optional[int] = typer.Option(None, "--max-acu", help="Maximum ACU limit"),
     advanced_mode: Optional[str] = typer.Option(None, "--advanced-mode", help="Advanced mode type: analyze | create_playbook | improve_playbook | batch | manage_knowledge"),
@@ -226,11 +241,13 @@ def create_session_cmd(
     repos: Optional[List[str]] = typer.Option(None, "--repo", help="Repository URLs to attach (v3 only, repeatable)"),
     knowledge_ids: Optional[List[str]] = typer.Option(None, "--knowledge-id", help="Knowledge IDs to attach (repeatable)"),
     secret_ids: Optional[List[str]] = typer.Option(None, "--secret-id", help="Secret IDs to inject (v3 only, repeatable)"),
+    session_secrets_raw: Optional[List[str]] = typer.Option(None, "--session-secret", help="Temporary session secret KEY=VALUE format (v3 only, repeatable)"),
     session_links: Optional[List[str]] = typer.Option(None, "--session-link", help="Session URLs to link as context (v3 only, repeatable)"),
     attachment_urls: Optional[List[str]] = typer.Option(None, "--attachment-url", help="Attachment URLs to attach (v3 only, repeatable)"),
     create_as_user_id: Optional[str] = typer.Option(None, "--create-as-user-id", help="Enterprise: create session on behalf of this user ID (v3 only)"),
     bypass_approval: bool = typer.Option(False, "--bypass-approval", help="Skip UI approval step — child sessions start immediately (v3 only)"),
     structured_output_schema: Optional[str] = typer.Option(None, "--structured-output-schema", help="JSON schema string for structured response output (v3 only)"),
+    structured_output_required: Optional[bool] = typer.Option(None, "--structured-output-required/--optional-structured-output", help="Require structured output tool call (v3 only)"),
     force: bool = typer.Option(False, "--force", help="Force creation even if duplicate prompt is detected"),
     wait: bool = typer.Option(False, "--wait", "-w", help="Block until the session reaches a terminal status"),
     interval: int = typer.Option(5, "--interval", help="Polling interval in seconds when --wait is used"),
@@ -241,17 +258,30 @@ def create_session_cmd(
     api_ver = config.api_version
     console.print(f"[dim]Using profile: {config.active_profile or 'default'} ({api_ver})[/dim]")
 
+    session_secrets = None
+    if session_secrets_raw:
+        session_secrets = []
+        for s in session_secrets_raw:
+            if "=" in s:
+                k, v = s.split("=", 1)
+                session_secrets.append({"key": k, "value": v, "sensitive": True})
+
     v3_only_used = [x for x, v in [
+        ("--devin-mode", devin_mode),
+        ("--platform", platform),
+        ("--resumable", resumable),
         ("--advanced-mode", advanced_mode),
         ("--playbook-id", playbook_id),
         ("--child-playbook-id", child_playbook_id),
         ("--repos", repos),
         ("--secret-ids", secret_ids),
+        ("--session-secret", session_secrets_raw),
         ("--session-links", session_links),
         ("--attachment-urls", attachment_urls),
         ("--create-as-user-id", create_as_user_id),
         ("--bypass-approval", bypass_approval or None),
         ("--structured-output-schema", structured_output_schema),
+        ("--structured-output-required", structured_output_required),
     ] if v]
     if api_ver == "v1" and v3_only_used:
         console.print(f"[bold yellow]Warning:[/bold yellow] The following flags are v3-only and will be ignored on a v1 profile: {', '.join(v3_only_used)}")
@@ -279,6 +309,10 @@ def create_session_cmd(
         resp = sessions.create_session(
             prompt=prompt_text,
             title=title,
+            devin_mode=devin_mode,
+            platform=platform,
+            resumable=resumable,
+            structured_output_required=structured_output_required,
             max_acu_limit=max_acu,
             advanced_mode=advanced_mode,
             playbook_id=playbook_id,
@@ -288,6 +322,7 @@ def create_session_cmd(
             knowledge_ids=knowledge_ids or None,
             secret_ids=secret_ids or None,
             session_links=session_links or None,
+            session_secrets=session_secrets,
             attachment_urls=attachment_urls or None,
             create_as_user_id=create_as_user_id,
             bypass_approval=bypass_approval,
@@ -1502,17 +1537,21 @@ def list_sessions_top_cmd(
 def create_session_top_cmd(
     prompt: str = typer.Argument(..., help="The prompt for the session"),
     title: Optional[str] = typer.Option(None, "--title", "-t"),
+    devin_mode: Optional[str] = typer.Option(None, "--devin-mode", "--mode", "--model", help="Devin agent mode / model: normal | fast | lite | ultra | fusion (v3 only)"),
+    platform: Optional[str] = typer.Option(None, "--platform", help="VM platform or outpost pool name (v3 only)"),
+    resumable: Optional[bool] = typer.Option(None, "--resumable/--no-resumable", help="Preserve session VM state after stopping (v3 only)"),
     wait: bool = typer.Option(False, "--wait", "-w", help="Block until the session completes"),
     interval: int = typer.Option(5, "--interval"),
     force: bool = typer.Option(False, "--force"),
 ):
     """Create a new session (alias for: devin sessions create)."""
-    create_session_cmd(prompt=prompt, file=None, title=title, org=None, max_acu=None,
+    create_session_cmd(prompt=prompt, file=None, title=title, devin_mode=devin_mode, platform=platform,
+                       resumable=resumable, org=None, max_acu=None,
                        advanced_mode=None, playbook_id=None, child_playbook_id=None,
                        tags=None, repos=None, knowledge_ids=None, secret_ids=None,
-                       session_links=None, attachment_urls=None, create_as_user_id=None,
+                       session_secrets_raw=None, session_links=None, attachment_urls=None, create_as_user_id=None,
                        bypass_approval=False, structured_output_schema=None,
-                       force=force, wait=wait, interval=interval)
+                       structured_output_required=None, force=force, wait=wait, interval=interval)
     return None
 
 @app.command("upload")
@@ -1552,8 +1591,12 @@ def attach_cmd(
     url = upload_resp.strip('"') if isinstance(upload_resp, str) else str(upload_resp)
     console.print(f"[green]Uploaded:[/green] {url}")
     full_prompt = f"{prompt}\n\nATTACHMENT: \"{url}\""
-    create_session_cmd(prompt=full_prompt, file=None, title=title, org=None, max_acu=None,
-                       advanced_mode=None, force=False, wait=wait, interval=interval)
+    create_session_cmd(prompt=full_prompt, file=None, title=title, devin_mode=None, platform=None,
+                       resumable=None, org=None, max_acu=None, advanced_mode=None, playbook_id=None,
+                       child_playbook_id=None, tags=None, repos=None, knowledge_ids=None, secret_ids=None,
+                       session_secrets_raw=None, session_links=None, attachment_urls=None, create_as_user_id=None,
+                       bypass_approval=False, structured_output_schema=None,
+                       structured_output_required=None, force=force, wait=wait, interval=interval)
     return None
 
 @app.command("update-tags")
@@ -1762,6 +1805,337 @@ def chain_cmd(
 
     console.print("[bold green]Chain completed![/bold green]")
     return resp
+
+# --- New v3 Commands & Sub-Apps ---
+
+# Session Insights
+@session_app.command("generate-insights")
+@handle_api_error
+def generate_session_insights_cmd(
+    session_id: Optional[str] = typer.Argument(None, help="Session ID"),
+    org: Optional[str] = typer.Option(None, "--org"),
+):
+    """Trigger on-demand generation of session insights (v3 only)."""
+    if org: config.temporary_org_id = org
+    sid = session_id or get_current_session_id()
+    if config.api_version == "v1":
+        console.print("[bold red]Error:[/bold red] Session insights are only supported in v3 API.")
+        raise typer.Exit(1)
+    resp = sessions.generate_session_insights(sid)
+    console.print(f"[green]Session insights generation triggered for {sid}.[/green]")
+    return resp
+
+# PR Reviews
+@pr_review_app.command("trigger")
+@handle_api_error
+def trigger_pr_review_cmd(
+    pr_url: str = typer.Option(..., "--pr-url", "-u", help="Pull request URL to review"),
+    org: Optional[str] = typer.Option(None, "--org"),
+    json_output: bool = typer.Option(False, "--json", help="Output raw JSON"),
+):
+    """Trigger a Devin Review for a pull/merge request (v3 only)."""
+    if org: config.temporary_org_id = org
+    if config.api_version == "v1":
+        console.print("[bold red]Error:[/bold red] PR reviews are only supported in v3 API.")
+        raise typer.Exit(1)
+    if json_output:
+        os.environ["DEVIN_OUTPUT_FORMAT"] = "json"
+    resp = pr_reviews.trigger_pr_review(pr_url)
+    if os.environ.get("DEVIN_OUTPUT_FORMAT") == "json":
+        return resp
+    console.print(Panel(json.dumps(resp, indent=2), title="Devin PR Review Triggered"))
+    return resp
+
+@pr_review_app.command("get")
+@handle_api_error
+def get_pr_review_cmd(
+    pr_url: Optional[str] = typer.Option(None, "--pr-url", "-u", help="Pull request URL"),
+    repo_path: Optional[str] = typer.Option(None, "--repo-path", help="Repo path (e.g. github.com/owner/repo)"),
+    pr_number: Optional[int] = typer.Option(None, "--pr-number", help="PR number"),
+    org: Optional[str] = typer.Option(None, "--org"),
+    json_output: bool = typer.Option(False, "--json", help="Output raw JSON"),
+):
+    """Get latest Devin Review status for a PR (v3 only)."""
+    if org: config.temporary_org_id = org
+    if config.api_version == "v1":
+        console.print("[bold red]Error:[/bold red] PR reviews are only supported in v3 API.")
+        raise typer.Exit(1)
+    if json_output:
+        os.environ["DEVIN_OUTPUT_FORMAT"] = "json"
+    resp = pr_reviews.get_pr_review_status(pr_url=pr_url, repo_path=repo_path, pr_number=pr_number)
+    if os.environ.get("DEVIN_OUTPUT_FORMAT") == "json":
+        return resp
+    console.print(Panel(json.dumps(resp, indent=2), title="Devin PR Review Status"))
+    return resp
+
+# Organization Session Tags
+@tag_app.command("list")
+@handle_api_error
+def list_org_tags_cmd(
+    org: Optional[str] = typer.Option(None, "--org"),
+    json_output: bool = typer.Option(False, "--json", help="Output raw JSON"),
+):
+    """List allowed session tags for the organization (v3 only)."""
+    if org: config.temporary_org_id = org
+    if json_output:
+        os.environ["DEVIN_OUTPUT_FORMAT"] = "json"
+    resp = tags.get_org_tags()
+    if os.environ.get("DEVIN_OUTPUT_FORMAT") == "json":
+        return resp
+    console.print(Panel(json.dumps(resp, indent=2), title="Allowed Organization Session Tags"))
+    return resp
+
+@tag_app.command("append")
+@handle_api_error
+def append_org_tags_cmd(
+    tag_list: List[str] = typer.Option(..., "--tag", "-t", help="Tags to append"),
+    org: Optional[str] = typer.Option(None, "--org"),
+):
+    """Append allowed session tags for the organization (v3 only)."""
+    if org: config.temporary_org_id = org
+    resp = tags.append_org_tags(tag_list)
+    console.print(f"[green]Tags appended successfully.[/green]")
+    return resp
+
+@tag_app.command("replace")
+@handle_api_error
+def replace_org_tags_cmd(
+    tag_list: List[str] = typer.Option(..., "--tag", "-t", help="Full set of tags"),
+    org: Optional[str] = typer.Option(None, "--org"),
+):
+    """Replace all allowed session tags for the organization (v3 only)."""
+    if org: config.temporary_org_id = org
+    resp = tags.replace_org_tags(tag_list)
+    console.print(f"[green]Allowed tags replaced successfully.[/green]")
+    return resp
+
+@tag_app.command("clear")
+@handle_api_error
+def clear_org_tags_cmd(org: Optional[str] = typer.Option(None, "--org")):
+    """Clear all allowed session tags for the organization (v3 only)."""
+    if org: config.temporary_org_id = org
+    if typer.confirm("Clear all allowed session tags?"):
+        resp = tags.clear_org_tags()
+        console.print(f"[green]Allowed tags cleared.[/green]")
+        return resp
+    return None
+
+# Blueprints
+@blueprint_app.command("list")
+@handle_api_error
+def list_blueprints_cmd(
+    org: Optional[str] = typer.Option(None, "--org"),
+    json_output: bool = typer.Option(False, "--json", help="Output raw JSON"),
+):
+    """List snapshot blueprints for the organization (v3 only)."""
+    if org: config.temporary_org_id = org
+    if json_output:
+        os.environ["DEVIN_OUTPUT_FORMAT"] = "json"
+    resp = blueprints.list_blueprints()
+    if os.environ.get("DEVIN_OUTPUT_FORMAT") == "json":
+        return resp
+    console.print(Panel(json.dumps(resp, indent=2), title="Blueprints"))
+    return resp
+
+@blueprint_app.command("trigger-build")
+@handle_api_error
+def trigger_blueprint_build_cmd(org: Optional[str] = typer.Option(None, "--org")):
+    """Trigger a manual snapshot build for the organization (v3 only)."""
+    if org: config.temporary_org_id = org
+    resp = blueprints.trigger_build()
+    console.print(f"[green]Snapshot build triggered.[/green]")
+    return resp
+
+@blueprint_app.command("list-builds")
+@handle_api_error
+def list_blueprint_builds_cmd(
+    org: Optional[str] = typer.Option(None, "--org"),
+    json_output: bool = typer.Option(False, "--json", help="Output raw JSON"),
+):
+    """List snapshot builds for the organization (v3 only)."""
+    if org: config.temporary_org_id = org
+    if json_output:
+        os.environ["DEVIN_OUTPUT_FORMAT"] = "json"
+    resp = blueprints.list_builds()
+    if os.environ.get("DEVIN_OUTPUT_FORMAT") == "json":
+        return resp
+    console.print(Panel(json.dumps(resp, indent=2), title="Snapshot Builds"))
+    return resp
+
+# Enterprise Sub-Apps & Commands
+ip_app = typer.Typer(help="Manage enterprise IP access allowlists", no_args_is_help=True)
+guardrail_app = typer.Typer(help="View guardrail violations", no_args_is_help=True)
+code_scan_app = typer.Typer(help="View and remediate code scan findings", no_args_is_help=True)
+service_user_app = typer.Typer(help="Manage service user API keys", no_args_is_help=True)
+
+enterprise_app.add_typer(ip_app, name="ip-access-list", help="Manage IP access allowlist")
+enterprise_app.add_typer(guardrail_app, name="guardrails", help="View guardrail violations")
+enterprise_app.add_typer(code_scan_app, name="code-scans", help="Manage code scans")
+enterprise_app.add_typer(service_user_app, name="service-users", help="Manage service users")
+
+@ip_app.command("list")
+@handle_api_error
+def list_ip_access_list_cmd(json_output: bool = typer.Option(False, "--json", help="Output raw JSON")):
+    """Get enterprise IP access allowlist (v3 only)."""
+    if json_output:
+        os.environ["DEVIN_OUTPUT_FORMAT"] = "json"
+    resp = ip_access_list.get_ip_access_list()
+    if os.environ.get("DEVIN_OUTPUT_FORMAT") == "json":
+        return resp
+    console.print(Panel(json.dumps(resp, indent=2), title="IP Access List"))
+    return resp
+
+@ip_app.command("add")
+@handle_api_error
+def add_ip_access_list_cmd(cidr_blocks: List[str] = typer.Option(..., "--cidr", "-c", help="CIDR ranges to append")):
+    """Append IP ranges to allowlist (v3 only)."""
+    resp = ip_access_list.add_ip_access_list(cidr_blocks)
+    console.print(f"[green]IP ranges added successfully.[/green]")
+    return resp
+
+@ip_app.command("replace")
+@handle_api_error
+def replace_ip_access_list_cmd(cidr_blocks: List[str] = typer.Option(..., "--cidr", "-c", help="CIDR ranges")):
+    """Replace enterprise IP allowlist (v3 only)."""
+    resp = ip_access_list.replace_ip_access_list(cidr_blocks)
+    console.print(f"[green]IP allowlist replaced successfully.[/green]")
+    return resp
+
+@ip_app.command("clear")
+@handle_api_error
+def clear_ip_access_list_cmd():
+    """Clear enterprise IP allowlist (v3 only)."""
+    if typer.confirm("Clear entire IP allowlist?"):
+        resp = ip_access_list.clear_ip_access_list()
+        console.print(f"[green]IP allowlist cleared.[/green]")
+        return resp
+    return None
+
+@guardrail_app.command("list")
+@handle_api_error
+def list_guardrail_violations_cmd(
+    session_id: Optional[str] = typer.Option(None, "--session-id"),
+    guardrail_id: Optional[str] = typer.Option(None, "--guardrail-id"),
+    json_output: bool = typer.Option(False, "--json", help="Output raw JSON"),
+):
+    """List guardrail violations (v3 only)."""
+    if json_output:
+        os.environ["DEVIN_OUTPUT_FORMAT"] = "json"
+    resp = guardrail_violations.list_guardrail_violations(session_id=session_id, guardrail_id=guardrail_id)
+    if os.environ.get("DEVIN_OUTPUT_FORMAT") == "json":
+        return resp
+    console.print(Panel(json.dumps(resp, indent=2), title="Guardrail Violations"))
+    return resp
+
+@code_scan_app.command("findings")
+@handle_api_error
+def list_code_scan_findings_cmd(json_output: bool = typer.Option(False, "--json", help="Output raw JSON")):
+    """List enterprise code scan findings (v3 only)."""
+    if json_output:
+        os.environ["DEVIN_OUTPUT_FORMAT"] = "json"
+    resp = code_scans.list_code_scan_findings()
+    if os.environ.get("DEVIN_OUTPUT_FORMAT") == "json":
+        return resp
+    console.print(Panel(json.dumps(resp, indent=2), title="Code Scan Findings"))
+    return resp
+
+@code_scan_app.command("metrics")
+@handle_api_error
+def get_code_scan_metrics_cmd(json_output: bool = typer.Option(False, "--json", help="Output raw JSON")):
+    """Get enterprise code scan metrics (v3 only)."""
+    if json_output:
+        os.environ["DEVIN_OUTPUT_FORMAT"] = "json"
+    resp = code_scans.get_code_scan_metrics()
+    if os.environ.get("DEVIN_OUTPUT_FORMAT") == "json":
+        return resp
+    console.print(Panel(json.dumps(resp, indent=2), title="Code Scan Metrics"))
+    return resp
+
+@code_scan_app.command("remediate")
+@handle_api_error
+def remediate_code_scan_cmd(
+    finding_id: str = typer.Option(..., "--finding-id", "-f", help="Code scan finding ID"),
+    prompt_override: Optional[str] = typer.Option(None, "--prompt-override", help="Optional prompt override"),
+):
+    """Launch a Devin session to remediate a code scan finding (v3 only)."""
+    resp = code_scans.remediate_code_scan_finding(finding_id=finding_id, prompt_override=prompt_override)
+    console.print(f"[green]Remediation session created.[/green]")
+    return resp
+
+@enterprise_app.command("queue")
+@handle_api_error
+def get_queue_status_cmd(json_output: bool = typer.Option(False, "--json", help="Output raw JSON")):
+    """Get enterprise session queue health status (v3 only)."""
+    if json_output:
+        os.environ["DEVIN_OUTPUT_FORMAT"] = "json"
+    resp = queue.get_queue_status()
+    if os.environ.get("DEVIN_OUTPUT_FORMAT") == "json":
+        return resp
+    console.print(Panel(json.dumps(resp, indent=2), title="Queue Health Status"))
+    return resp
+
+@enterprise_app.command("audit-logs")
+@handle_api_error
+def list_audit_logs_cmd(
+    limit: int = typer.Option(100, "--limit"),
+    order: str = typer.Option("desc", "--order", help="asc or desc"),
+    json_output: bool = typer.Option(False, "--json", help="Output raw JSON"),
+):
+    """List enterprise audit logs (v3 only)."""
+    if json_output:
+        os.environ["DEVIN_OUTPUT_FORMAT"] = "json"
+    resp = audit_logs.list_audit_logs(limit=limit, order=order)
+    if os.environ.get("DEVIN_OUTPUT_FORMAT") == "json":
+        return resp
+    console.print(Panel(json.dumps(resp, indent=2), title="Enterprise Audit Logs"))
+    return resp
+
+@service_user_app.command("list")
+@handle_api_error
+def list_service_users_cmd(json_output: bool = typer.Option(False, "--json", help="Output raw JSON")):
+    """List service users in enterprise (v3 only)."""
+    if json_output:
+        os.environ["DEVIN_OUTPUT_FORMAT"] = "json"
+    resp = service_users.list_service_users()
+    if os.environ.get("DEVIN_OUTPUT_FORMAT") == "json":
+        return resp
+    console.print(Panel(json.dumps(resp, indent=2), title="Service Users"))
+    return resp
+
+@service_user_app.command("create-key")
+@handle_api_error
+def create_service_user_key_cmd(
+    service_user_id: str = typer.Option(..., "--user-id", "-u"),
+    name: str = typer.Option(..., "--name", "-n"),
+):
+    """Create an API key for a service user (v3 only)."""
+    resp = service_users.create_service_user_api_key(service_user_id, name)
+    console.print(f"[green]Service user API key created.[/green]")
+    return resp
+
+@service_user_app.command("rotate-key")
+@handle_api_error
+def rotate_service_user_key_cmd(
+    service_user_id: str = typer.Option(..., "--user-id", "-u"),
+    key_id: str = typer.Option(..., "--key-id", "-k"),
+):
+    """Rotate an API key for a service user (v3 only)."""
+    resp = service_users.rotate_service_user_api_key(service_user_id, key_id)
+    console.print(f"[green]Service user API key rotated.[/green]")
+    return resp
+
+@service_user_app.command("revoke-key")
+@handle_api_error
+def revoke_service_user_key_cmd(
+    service_user_id: str = typer.Option(..., "--user-id", "-u"),
+    key_id: str = typer.Option(..., "--key-id", "-k"),
+):
+    """Revoke an API key for a service user (v3 only)."""
+    if typer.confirm(f"Revoke key {key_id}?"):
+        resp = service_users.revoke_service_user_api_key(service_user_id, key_id)
+        console.print(f"[green]Service user API key revoked.[/green]")
+        return resp
+    return None
 
 if __name__ == "__main__":
     app()

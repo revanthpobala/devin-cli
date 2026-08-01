@@ -60,6 +60,19 @@ def test_terminate_session():
     assert route.called
 
 @respx.mock
+def test_create_session_with_devin_mode():
+    route = respx.post("https://api.devin.ai/v3/organizations/test_org/sessions").mock(
+        return_value=Response(200, json={"session_id": "sess_fast", "url": "https://preview.devin.ai/sess_fast"})
+    )
+    
+    resp = sessions.create_session("fast prompt", devin_mode="fast", platform="windows")
+    assert resp["session_id"] == "sess_fast"
+    import json
+    body = json.loads(route.calls.last.request.read())
+    assert body["devin_mode"] == "fast"
+    assert body["platform"] == "windows"
+
+@respx.mock
 def test_get_session_insights():
     respx.get("https://api.devin.ai/v3/organizations/test_org/sessions/sess_123/insights").mock(
         return_value=Response(200, json={"session_id": "sess_123", "analysis": {}})
@@ -67,3 +80,14 @@ def test_get_session_insights():
     
     resp = sessions.get_session_insights("sess_123")
     assert resp["session_id"] == "sess_123"
+
+@respx.mock
+def test_generate_session_insights():
+    route = respx.post("https://api.devin.ai/v3/organizations/test_org/sessions/sess_123/insights/generate").mock(
+        return_value=Response(200, json={"status": "started"})
+    )
+    
+    resp = sessions.generate_session_insights("sess_123")
+    assert resp["status"] == "started"
+    assert route.called
+

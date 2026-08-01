@@ -139,7 +139,7 @@ class V3Client(BaseClient):
         if endpoint.startswith("v3beta1/"):
             base = config.base_url.replace("/v3", "").replace("/v2", "").replace("/v1", "").rstrip("/")
             url = f"{base}/{endpoint}"
-            if config.org_id and "/organizations/" not in url:
+            if config.org_id and "/organizations/" not in url and "/enterprise/" not in url:
                 url = url.replace("v3beta1/", f"v3beta1/organizations/{config.org_id}/")
             return url
         elif endpoint.startswith("enterprise/"):

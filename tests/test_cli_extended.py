@@ -189,3 +189,62 @@ def test_sessions_cost_v3(mock_get_session, mock_consumption):
     assert mock_consumption.call_count == 1
     assert "breakdown" in result.stdout
 
+@patch("devin_cli.api.v3.sessions.create_session")
+def test_create_session_devin_mode_flag(mock_create):
+    mock_create.return_value = {"session_id": "sess_fast", "url": "https://devin.ai/sess_fast"}
+    with patch("devin_cli.cli.config") as mock_config:
+        mock_config.api_version = "v3"
+        mock_config.get_session_by_prompt_hash.return_value = None
+        result = runner.invoke(app, ["sessions", "create", "test prompt", "--devin-mode", "fast"])
+    assert result.exit_code == 0
+    mock_create.assert_called_once()
+    assert mock_create.call_args.kwargs.get("devin_mode") == "fast"
+
+@patch("devin_cli.cli.pr_reviews.trigger_pr_review")
+def test_pr_review_trigger(mock_trigger):
+    mock_trigger.return_value = {"status": "pending", "pr_number": 10}
+    with patch("devin_cli.cli.config") as mock_config:
+        mock_config.api_version = "v3"
+        result = runner.invoke(app, ["pr-reviews", "trigger", "--pr-url", "https://github.com/owner/repo/pull/10"])
+    assert result.exit_code == 0
+    assert "Devin PR Review Triggered" in result.stdout
+
+@patch("devin_cli.cli.queue.get_queue_status")
+def test_enterprise_queue_command(mock_queue):
+    mock_queue.return_value = {"status": "normal", "queued_count": 2}
+    with patch("devin_cli.cli.config") as mock_config:
+        mock_config.api_version = "v3"
+        result = runner.invoke(app, ["enterprise", "queue"])
+    assert result.exit_code == 0
+    assert "Queue Health Status" in result.stdout
+
+@patch("devin_cli.api.v3.sessions.create_session")
+def test_create_session_session_secret_flag(mock_create):
+    mock_create.return_value = {"session_id": "sess_secret", "url": "https://devin.ai/sess_secret"}
+    with patch("devin_cli.cli.config") as mock_config:
+        mock_config.api_version = "v3"
+        mock_config.get_session_by_prompt_hash.return_value = None
+        result = runner.invoke(app, ["sessions", "create", "test prompt", "--session-secret", "MY_KEY=SECRET_VAL"])
+    assert result.exit_code == 0
+    mock_create.assert_called_once()
+    assert mock_create.call_args.kwargs.get("session_secrets") == [{"key": "MY_KEY", "value": "SECRET_VAL", "sensitive": True}]
+
+@patch("devin_cli.cli.pr_reviews.trigger_pr_review")
+def test_pr_review_trigger_json(mock_trigger):
+    mock_trigger.return_value = {"status": "pending", "pr_number": 10}
+    with patch("devin_cli.cli.config") as mock_config:
+        mock_config.api_version = "v3"
+        result = runner.invoke(app, ["pr-reviews", "trigger", "--pr-url", "https://github.com/owner/repo/pull/10", "--json"])
+    assert result.exit_code == 0
+    assert '"status": "pending"' in result.stdout
+
+@patch("devin_cli.cli.queue.get_queue_status")
+def test_enterprise_queue_command_json(mock_queue):
+    mock_queue.return_value = {"status": "normal", "queued_count": 2}
+    with patch("devin_cli.cli.config") as mock_config:
+        mock_config.api_version = "v3"
+        result = runner.invoke(app, ["enterprise", "queue", "--json"])
+    assert result.exit_code == 0
+    assert '"status": "normal"' in result.stdout
+
+

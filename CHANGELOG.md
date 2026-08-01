@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.6] - 2026-08-01
+### Added
+- **Model Selection & Agent Modes**: Full support for `--devin-mode` / `--mode` / `--model` (`normal`, `fast`, `lite`, `ultra`, `fusion`), `--platform`, `--resumable / --no-resumable`, and `--structured-output-required` on `devin sessions create` and `devin create-session`.
+- **Devin PR Reviews**: Added `devin pr-reviews trigger` and `devin pr-reviews get` to trigger and query pull request code reviews.
+- **On-Demand Session Insights**: Added `devin sessions generate-insights <session_id>` (`POST /v3/organizations/{org_id}/sessions/{devin_id}/insights/generate`).
+- **Organization Session Tags**: Added `devin tags list|append|replace|clear` to manage organization session tag policies.
+- **Snapshot Setup / Blueprints**: Added `devin blueprints list|trigger-build|list-builds` to list blueprints and manage snapshot builds.
+- **Enterprise Security & Operations Commands**:
+  - `devin enterprise ip-access-list list|add|replace|clear`
+  - `devin enterprise guardrails list`
+  - `devin enterprise code-scans findings|metrics|remediate`
+  - `devin enterprise queue` (health status)
+  - `devin enterprise audit-logs list`
+  - `devin enterprise service-users list|create-key|rotate-key|revoke-key`
+- **Session Secrets Flag**: Support for `--session-secret KEY=VALUE` on `sessions create` for temporary session secret injection.
+
+### Fixed
+- **Beta Enterprise URL Scoping**: Fixed `client.py` URL builder to avoid force-injecting `/organizations/` into `v3beta1/enterprise/` endpoints.
+- **JSON Schema Output Parsing**: Automatically parse `--structured-output-schema` string payloads into valid JSON schema objects to meet API specifications.
+- **Unified `--json` Handling**: Standardized `--json` flag behavior across all new CLI subcommands and improved Rich console output stream handling in `@handle_api_error`.
+
 ## [1.3.4] - 2026-05-03
 ### Fixed
 - **Scheduled Sessions API**: Updated the `schedules create` and `schedules update` commands to map the old `cron` and `title` fields to the new `frequency` and `name` properties required by the API. Added `schedule_type="recurring"` and fixed the update method to correctly use `PATCH`.
