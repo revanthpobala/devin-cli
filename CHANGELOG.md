@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.3.6] - 2026-08-01
+## [1.4.0] - 2026-08-01
 ### Added
 - **Model Selection & Agent Modes**: Full support for `--devin-mode` / `--mode` / `--model` (`normal`, `fast`, `lite`, `ultra`, `fusion`), `--platform`, `--resumable / --no-resumable`, and `--structured-output-required` on `devin sessions create` and `devin create-session`.
 - **Devin PR Reviews**: Added `devin pr-reviews trigger` and `devin pr-reviews get` to trigger and query pull request code reviews.
