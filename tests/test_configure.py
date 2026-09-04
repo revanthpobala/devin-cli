@@ -100,3 +100,63 @@ def test_configure_custom_profile(tmp_path, monkeypatch):
     profile = data["profiles"]["ci-runner"]
     assert profile["api_token"] == "cog_service_token"
     assert profile["org_id"] == "org-enterprise"
+
+
+def test_configure_non_interactive_when_token_provided_without_yes(tmp_path, monkeypatch):
+    custom_cfg = tmp_path / "devin_test.json"
+    monkeypatch.setenv("DEVIN_CONFIG_FILE", str(custom_cfg))
+    monkeypatch.delenv("DEVIN_API_TOKEN", raising=False)
+    monkeypatch.delenv("DEVIN_ORG_ID", raising=False)
+
+    # Calling configure with --token and --org should NOT prompt even without --yes
+    result = runner.invoke(app, [
+        "configure",
+        "--token", "apk_auto_token_999",
+        "--org", "org-auto-ci-999",
+    ])
+
+    assert result.exit_code == 0
+    assert "Configuration saved to" in result.stdout
+    data = json.loads(custom_cfg.read_text())
+    profile = data["profiles"]["default"]
+    assert profile["api_token"] == "apk_auto_token_999"
+    assert profile["org_id"] == "org-auto-ci-999"
+    assert profile["api_version"] == "v3"
+    assert profile["base_url"] == "https://api.devin.ai/v3"
+
+
+def test_configure_global_flags_before_subcommand_without_yes(tmp_path, monkeypatch):
+    custom_cfg = tmp_path / "devin_test.json"
+    monkeypatch.setenv("DEVIN_CONFIG_FILE", str(custom_cfg))
+    monkeypatch.delenv("DEVIN_API_TOKEN", raising=False)
+    monkeypatch.delenv("DEVIN_ORG_ID", raising=False)
+
+    # Calling devin --token ... --org ... configure should NOT prompt
+    result = runner.invoke(app, [
+        "--token", "apk_global_token_777",
+        "--org", "org-global-ci-777",
+        "configure",
+    ])
+
+    assert result.exit_code == 0
+    assert "Configuration saved to" in result.stdout
+    data = json.loads(custom_cfg.read_text())
+    profile = data["profiles"]["default"]
+    assert profile["api_token"] == "apk_global_token_777"
+    assert profile["org_id"] == "org-global-ci-777"
+
+
+def test_configure_ci_environment_uses_env_token(tmp_path, monkeypatch):
+    custom_cfg = tmp_path / "devin_test.json"
+    monkeypatch.setenv("DEVIN_CONFIG_FILE", str(custom_cfg))
+    monkeypatch.setenv("CI", "true")
+    monkeypatch.setenv("DEVIN_API_TOKEN", "apk_ci_env_token")
+    monkeypatch.setenv("DEVIN_ORG_ID", "org-ci-env")
+
+    result = runner.invoke(app, ["configure"])
+    assert result.exit_code == 0
+    data = json.loads(custom_cfg.read_text())
+    profile = data["profiles"]["default"]
+    assert profile["api_token"] == "apk_ci_env_token"
+    assert profile["org_id"] == "org-ci-env"
+

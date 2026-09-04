@@ -46,16 +46,15 @@ except Exception:
 # Early CLI flag detection for accurate menus, config loading, and mode setup
 def _extract_cli_arg(flags: list) -> Optional[str]:
     for flag in flags:
-        if flag in sys.argv:
-            try:
-                idx = sys.argv.index(flag)
+        for idx, arg in enumerate(sys.argv):
+            if arg == flag:
                 if idx + 1 < len(sys.argv) and not sys.argv[idx + 1].startswith("-"):
                     return sys.argv[idx + 1]
-            except ValueError:
-                pass
+            elif arg.startswith(f"{flag}="):
+                return arg.split("=", 1)[1]
     return None
 
-early_config_file = _extract_cli_arg(["--config-file"])
+early_config_file = _extract_cli_arg(["--config-file", "-c"])
 if early_config_file:
     config.set_config_file(early_config_file)
 elif os.environ.get("DEVIN_CONFIG_FILE"):
@@ -65,15 +64,16 @@ early_profile = _extract_cli_arg(["--profile", "-p"])
 if early_profile:
     config.active_profile = early_profile
 
-early_token = _extract_cli_arg(["--token"])
+early_token = _extract_cli_arg(["--token", "-t"])
 if early_token:
     config.runtime.api_token = early_token
 
-early_org = _extract_cli_arg(["--org"])
+early_org = _extract_cli_arg(["--org", "-o"])
 if early_org:
     config.runtime.org_id = early_org
+    config.temporary_org_id = early_org
 
-early_base_url = _extract_cli_arg(["--base-url"])
+early_base_url = _extract_cli_arg(["--base-url", "-b"])
 if early_base_url:
     config.runtime.base_url = early_base_url
 
@@ -145,6 +145,12 @@ def main(
     """
     config.reset_runtime()
 
+    eff_token = token or _extract_cli_arg(["--token", "-t"])
+    eff_org = org or _extract_cli_arg(["--org", "-o"])
+    eff_base_url = base_url or _extract_cli_arg(["--base-url", "-b"])
+    eff_api_version = api_version or _extract_cli_arg(["--api-version"])
+    eff_config_file = config_file or _extract_cli_arg(["--config-file", "-c"])
+
     if json_format:
         os.environ["DEVIN_OUTPUT_FORMAT"] = "json"
         
@@ -152,18 +158,19 @@ def main(
         console.print(f"devin CLI version: {__version__}")
         raise typer.Exit()
         
-    if config_file:
-        config.set_config_file(config_file)
+    if eff_config_file:
+        config.set_config_file(eff_config_file)
     if profile:
         config.active_profile = profile
-    if token:
-        config.runtime.api_token = token
-    if org:
-        config.runtime.org_id = org
-    if base_url:
-        config.runtime.base_url = base_url
-    if api_version:
-        config.runtime.api_version = api_version
+    if eff_token:
+        config.runtime.api_token = eff_token
+    if eff_org:
+        config.runtime.org_id = eff_org
+        config.temporary_org_id = eff_org
+    if eff_base_url:
+        config.runtime.base_url = eff_base_url
+    if eff_api_version:
+        config.runtime.api_version = eff_api_version
         
     if ctx.invoked_subcommand is None:
         console.print(ASCII_LOGO)
@@ -240,36 +247,49 @@ def configure(
     if profile:
         config.active_profile = profile
         
-    is_interactive = not yes and sys.stdin.isatty()
+    is_ci = bool(
+        os.environ.get("CI")
+        or os.environ.get("GITHUB_ACTIONS")
+        or os.environ.get("CONTINUOUS_INTEGRATION")
+        or os.environ.get("TF_BUILD")
+    )
+    
+    # Check if token was provided via argument, early CLI arg, or runtime
+    token_val = token or _extract_cli_arg(["--token", "-t"]) or config.runtime.api_token
+    
+    # Prompt interactively ONLY when no token was provided, --yes is not passed, not in CI, and stdin is a TTY
+    is_interactive = not yes and not is_ci and sys.stdin.isatty() and token_val is None
 
     if not is_interactive:
-        final_token = token or config.api_token
+        final_token = token_val or config.api_token
         if not final_token:
             console.print("[bold red]Error:[/bold red] API token is required. Pass --token or set DEVIN_API_TOKEN.")
             raise typer.Exit(1)
-        final_base_url = base_url or config.base_url or "https://api.devin.ai/v3"
-        final_api_version = (api_version or config.api_version or "v3").lower()
-        final_org = org_id if org_id is not None else config.org_id
+        final_base_url = base_url or _extract_cli_arg(["--base-url", "-b"]) or config.base_url or "https://api.devin.ai/v3"
+        final_api_version = (api_version or _extract_cli_arg(["--api-version"]) or config.api_version or "v3").lower()
+        final_org = org_id if org_id is not None else (_extract_cli_arg(["--org"]) or config.org_id)
     else:
-        final_token = token
-        if not final_token:
+        try:
             final_token = Prompt.ask("Devin API Token (starts with apk_ or cog_)")
             if not final_token:
                 console.print("[bold red]Error:[/bold red] Token cannot be empty.")
                 raise typer.Exit(1)
 
-        final_base_url = base_url or Prompt.ask("Devin API Base URL", default=config.base_url or "https://api.devin.ai/v3")
+            final_base_url = base_url or Prompt.ask("Devin API Base URL", default=config.base_url or "https://api.devin.ai/v3")
 
-        if org_id is not None:
-            final_org = org_id
-        else:
-            org_prompt = Prompt.ask("Organization ID (optional)", default=config.org_id or "")
-            final_org = org_prompt if org_prompt else None
+            if org_id is not None:
+                final_org = org_id
+            else:
+                org_prompt = Prompt.ask("Organization ID (optional)", default=config.org_id or "")
+                final_org = org_prompt if org_prompt else None
 
-        if api_version is not None:
-            final_api_version = api_version.lower()
-        else:
-            final_api_version = Prompt.ask(f"API Version for profile '{config.active_profile}' (v3/v1)", default=config.api_version or "v3").lower()
+            if api_version is not None:
+                final_api_version = api_version.lower()
+            else:
+                final_api_version = Prompt.ask(f"API Version for profile '{config.active_profile}' (v3/v1)", default=config.api_version or "v3").lower()
+        except (EOFError, KeyboardInterrupt):
+            console.print("[bold red]Aborted.[/bold red]")
+            raise typer.Exit(1)
 
     if not (final_token.startswith("apk_") or final_token.startswith("cog_")):
         console.print("[bold yellow]Warning:[/bold yellow] Token format might be outdated. v3 tokens usually start with 'apk_' or 'cog_'.")
@@ -612,9 +632,10 @@ def session_cost_cmd(
                 except Exception:
                     return None
                     
+            import contextvars
             with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-                f_session = executor.submit(fetch_session)
-                f_cons = executor.submit(fetch_consumption)
+                f_session = executor.submit(contextvars.copy_context().run, fetch_session)
+                f_cons = executor.submit(contextvars.copy_context().run, fetch_consumption)
                 
                 resp = f_session.result()
                 cons_resp = f_cons.result()
@@ -1241,12 +1262,15 @@ def status_repo_cmd(
     json_output: bool = typer.Option(False, "--json"),
 ):
     """Get indexing status for one or more repositories."""
-    if org: config.temporary_org_id = org
+    if org:
+        config.temporary_org_id = org
+        config.runtime.org_id = org
     
     results = []
     exit_code = 0
     
     from concurrent.futures import ThreadPoolExecutor
+    import contextvars
 
     def fetch_status(path):
         try:
@@ -1269,7 +1293,7 @@ def status_repo_cmd(
     
     max_workers = min(10, len(paths))
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = {executor.submit(fetch_status, path): path for path in paths}
+        futures = {executor.submit(contextvars.copy_context().run, fetch_status, path): path for path in paths}
         for future in futures:
             path = futures[future]
             try:

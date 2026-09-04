@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.1] - 2026-09-04
+### Fixed
+- **Thread Context Propagation for Concurrent Commands (`repos status`, `sessions cost`)**:
+  - Resolved an issue where commands utilizing `concurrent.futures.ThreadPoolExecutor` lost runtime credentials (`--token`, `--org`) in worker threads, causing `repos status` to emit fake 404 `"Not registered in Devin (404)"` errors when relying solely on global flags without environment variables.
+  - Ensured `contextvars.copy_context().run` is executed per worker task and backed by instance-level fallback in `Config` to guarantee thread-safe credential access across any thread pool.
+- **Root Callback Runtime Credential Re-application**:
+  - Re-applied parsed flags and supported equals syntax (`--token=...`, `--org=...`) and flag aliases (`-t`, `-o`, `-b`, `-c`) so commands execute with correct credentials regardless of CLI argument order.
+- **Non-Interactive `configure` Wizard Bypass**:
+  - Completely eliminated interactive prompts in `devin configure` when `--token` is provided or in CI environments (`CI`, `GITHUB_ACTIONS`, `CONTINUOUS_INTEGRATION`, `TF_BUILD`), falling back cleanly to defaults (`base_url: https://api.devin.ai/v3`, `api_version: v3`) without requiring `--yes`.
+  - Added graceful handling of `EOFError` / `KeyboardInterrupt` to prevent unhandled tracebacks.
+
 ## [1.5.0] - 2026-09-04
 ### Added
 - **On-the-Fly Configuration & Global CLI Flags**: Root command now supports `--token`, `--org`, `--base-url`, `--api-version`, and `--config-file` flags, allowing complete credential configuration on the fly without writing to disk or modifying saved configs.

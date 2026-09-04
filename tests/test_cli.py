@@ -1,5 +1,6 @@
 from typer.testing import CliRunner
 from unittest.mock import patch
+from devin_cli import __version__
 from devin_cli.cli import app
 
 runner = CliRunner()
@@ -29,6 +30,6 @@ def test_cli_handles_api_error():
 def test_app_version():
     result = runner.invoke(app, ["--version"])
     assert result.exit_code == 0
-    assert "1.5.0" in result.stdout
+    assert __version__ in result.stdout
 
 

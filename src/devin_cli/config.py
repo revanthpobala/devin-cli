@@ -39,6 +39,7 @@ class Config:
         )
         self._custom_config_file: Optional[Path] = self._initial_config_file
         self._custom_config_dir: Optional[Path] = self._initial_config_dir
+        self._runtime: RuntimeCredentials = RuntimeCredentials()
         self.reset_runtime()
         self._data = {}
         self._loaded_file: Optional[Path] = None
@@ -47,13 +48,13 @@ class Config:
     @property
     def runtime(self) -> RuntimeCredentials:
         rt = _runtime_cv.get()
-        if rt is None:
-            rt = RuntimeCredentials()
-            _runtime_cv.set(rt)
-        return rt
+        if rt is not None:
+            return rt
+        return self._runtime
 
     def reset_runtime(self):
-        _runtime_cv.set(RuntimeCredentials())
+        self._runtime = RuntimeCredentials()
+        _runtime_cv.set(self._runtime)
         self._temporary_org_id = None
         self._runtime_profile = None
         self._custom_config_file = getattr(self, "_initial_config_file", None)
@@ -159,7 +160,12 @@ class Config:
     @property
     def api_token(self) -> Optional[str]:
         # Precedence: CLI flag (runtime) -> Env var -> Config file profile
-        val = self.runtime.api_token or os.environ.get("DEVIN_API_TOKEN") or self._get_profile_data().get("api_token")
+        val = (
+            self.runtime.api_token
+            or self._runtime.api_token
+            or os.environ.get("DEVIN_API_TOKEN")
+            or self._get_profile_data().get("api_token")
+        )
         return val.strip() if isinstance(val, str) else val
 
     @api_token.setter
@@ -172,6 +178,7 @@ class Config:
         val = (
             self.runtime.org_id
             or getattr(self, "_temporary_org_id", None)
+            or self._runtime.org_id
             or os.environ.get("DEVIN_ORG_ID")
             or self._get_profile_data().get("org_id")
         )
@@ -183,18 +190,20 @@ class Config:
 
     @property
     def temporary_org_id(self) -> Optional[str]:
-        return self.runtime.org_id or getattr(self, "_temporary_org_id", None)
+        return self.runtime.org_id or getattr(self, "_temporary_org_id", None) or self._runtime.org_id
 
     @temporary_org_id.setter
     def temporary_org_id(self, value: Optional[str]):
         self._temporary_org_id = value
         self.runtime.org_id = value
+        self._runtime.org_id = value
 
     @property
     def base_url(self) -> str:
         # Precedence: CLI flag (runtime) -> Env var -> Config file profile -> Default
         val = (
             self.runtime.base_url
+            or self._runtime.base_url
             or os.environ.get("DEVIN_BASE_URL")
             or self._get_profile_data().get("base_url", "https://api.devin.ai/v3")
         )
@@ -209,6 +218,7 @@ class Config:
         # Precedence: CLI flag (runtime) -> Env var -> Config file profile -> Default
         val = (
             self.runtime.api_version
+            or self._runtime.api_version
             or os.environ.get("DEVIN_API_VERSION")
             or self._get_profile_data().get("api_version", "v3")
         )
