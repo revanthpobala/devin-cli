@@ -1,36 +1,107 @@
 import json
 import os
+import contextvars
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 CONFIG_DIR = Path.home() / ".config" / "devin"
 CONFIG_FILE = CONFIG_DIR / "config.json"
 
+
+class APIError(Exception):
+    def __init__(self, message: str, status_code: Optional[int] = None):
+        super().__init__(message)
+        self.status_code = status_code
+
+
+@dataclass
+class RuntimeCredentials:
+    api_token: Optional[str] = None
+    org_id: Optional[str] = None
+    base_url: Optional[str] = None
+    api_version: Optional[str] = None
+    config_file: Optional[Path] = None
+
+
+_runtime_cv: contextvars.ContextVar[Optional[RuntimeCredentials]] = contextvars.ContextVar(
+    "_runtime_credentials", default=None
+)
+
+
 class Config:
-    def __init__(self, config_dir: Path = None):
-        self._config_dir = config_dir or CONFIG_DIR
-        self._config_file = self._config_dir / "config.json"
-        self._ensure_config_exists()
+    def __init__(self, config_dir: Optional[Path] = None, config_file: Optional[Union[str, Path]] = None):
+        self._initial_config_file: Optional[Path] = (
+            Path(config_file).expanduser().resolve() if config_file else None
+        )
+        self._initial_config_dir: Optional[Path] = (
+            Path(config_dir).expanduser().resolve() if config_dir else None
+        )
+        self._custom_config_file: Optional[Path] = self._initial_config_file
+        self._custom_config_dir: Optional[Path] = self._initial_config_dir
+        self.reset_runtime()
+        self._data = {}
+        self._loaded_file: Optional[Path] = None
+        self._load()
+
+    @property
+    def runtime(self) -> RuntimeCredentials:
+        rt = _runtime_cv.get()
+        if rt is None:
+            rt = RuntimeCredentials()
+            _runtime_cv.set(rt)
+        return rt
+
+    def reset_runtime(self):
+        _runtime_cv.set(RuntimeCredentials())
+        self._temporary_org_id = None
+        self._runtime_profile = None
+        self._custom_config_file = getattr(self, "_initial_config_file", None)
+        self._custom_config_dir = getattr(self, "_initial_config_dir", None)
+
+    def set_config_file(self, config_file: Union[str, Path]):
+        self._custom_config_file = Path(config_file).expanduser().resolve()
+        self._load()
+
+    def reload(self):
+        """Force re-reading configuration data from disk."""
         self._load()
 
     @property
     def config_file(self) -> Path:
-        return self._config_file
+        if self._custom_config_file:
+            return self._custom_config_file
+        if self.runtime.config_file:
+            return self.runtime.config_file
+        if os.environ.get("DEVIN_CONFIG_FILE"):
+            return Path(os.environ["DEVIN_CONFIG_FILE"]).expanduser().resolve()
+        if self._custom_config_dir:
+            return (self._custom_config_dir / "config.json").resolve()
+        return (Path.home() / ".config" / "devin" / "config.json").resolve()
+
+    @property
+    def config_dir(self) -> Path:
+        return self.config_file.parent
 
     def _ensure_config_exists(self):
-        if not self._config_dir.exists():
-            self._config_dir.mkdir(parents=True, mode=0o700)
-        if not self._config_file.exists():
-            with open(self._config_file, "w") as f:
-                json.dump({}, f)
-            self._config_file.chmod(0o600)
+        """Creates directory and empty file only upon writing."""
+        target_dir = self.config_dir
+        if not target_dir.exists():
+            target_dir.mkdir(parents=True, mode=0o700)
 
     def _load(self):
+        target_file = self.config_file
+        self._loaded_file = target_file
+        if not target_file.exists():
+            self._data = {}
+            return
+
         try:
-            with open(self._config_file, "r") as f:
+            with open(target_file, "r") as f:
                 self._data = json.load(f)
         except (json.JSONDecodeError, FileNotFoundError):
             self._data = {}
+            return
             
         if "profiles" not in self._data:
             # Migrate legacy flat config to default profile
@@ -44,12 +115,18 @@ class Config:
             }
             if "active_profile" not in self._data:
                 self._data["active_profile"] = "default"
-            self._save()
-
+            if target_file.exists():
+                self._save()
 
     def _save(self):
-        with open(self._config_file, "w") as f:
+        self._ensure_config_exists()
+        target_file = self.config_file
+        with open(target_file, "w") as f:
             json.dump(self._data, f, indent=2)
+        try:
+            target_file.chmod(0o600)
+        except OSError:
+            pass
 
     @property
     def active_profile(self) -> str:
@@ -64,9 +141,13 @@ class Config:
             self._data["profiles"][value] = {}
             
     def _get_profile_data(self) -> dict:
+        if self._loaded_file != self.config_file:
+            self._load()
         return self._data.get("profiles", {}).get(self.active_profile, {})
 
     def _set_profile_data(self, key: str, value: str):
+        if self._loaded_file != self.config_file:
+            self._load()
         profile_name = self.active_profile
         if "profiles" not in self._data:
             self._data["profiles"] = {}
@@ -77,8 +158,9 @@ class Config:
 
     @property
     def api_token(self) -> Optional[str]:
-        # Env var takes precedence
-        return os.environ.get("DEVIN_API_TOKEN") or self._get_profile_data().get("api_token")
+        # Precedence: CLI flag (runtime) -> Env var -> Config file profile
+        val = self.runtime.api_token or os.environ.get("DEVIN_API_TOKEN") or self._get_profile_data().get("api_token")
+        return val.strip() if isinstance(val, str) else val
 
     @api_token.setter
     def api_token(self, value: str):
@@ -86,9 +168,14 @@ class Config:
 
     @property
     def org_id(self) -> Optional[str]:
-        # Temporary override takes highest precedence (CLI flag)
-        # then env var, then config file
-        return getattr(self, "_temporary_org_id", None) or os.environ.get("DEVIN_ORG_ID") or self._get_profile_data().get("org_id")
+        # Precedence: CLI flag (runtime) -> temporary_org_id -> Env var -> Config file profile
+        val = (
+            self.runtime.org_id
+            or getattr(self, "_temporary_org_id", None)
+            or os.environ.get("DEVIN_ORG_ID")
+            or self._get_profile_data().get("org_id")
+        )
+        return val.strip() if isinstance(val, str) else val
 
     @org_id.setter
     def org_id(self, value: str):
@@ -96,15 +183,22 @@ class Config:
 
     @property
     def temporary_org_id(self) -> Optional[str]:
-        return getattr(self, "_temporary_org_id", None)
+        return self.runtime.org_id or getattr(self, "_temporary_org_id", None)
 
     @temporary_org_id.setter
     def temporary_org_id(self, value: Optional[str]):
         self._temporary_org_id = value
+        self.runtime.org_id = value
 
     @property
     def base_url(self) -> str:
-        return os.environ.get("DEVIN_BASE_URL") or self._get_profile_data().get("base_url", "https://api.devin.ai/v3")
+        # Precedence: CLI flag (runtime) -> Env var -> Config file profile -> Default
+        val = (
+            self.runtime.base_url
+            or os.environ.get("DEVIN_BASE_URL")
+            or self._get_profile_data().get("base_url", "https://api.devin.ai/v3")
+        )
+        return val.rstrip("/") if isinstance(val, str) else "https://api.devin.ai/v3"
 
     @base_url.setter
     def base_url(self, value: str):
@@ -112,7 +206,13 @@ class Config:
 
     @property
     def api_version(self) -> str:
-        return os.environ.get("DEVIN_API_VERSION") or self._get_profile_data().get("api_version", "v3")
+        # Precedence: CLI flag (runtime) -> Env var -> Config file profile -> Default
+        val = (
+            self.runtime.api_version
+            or os.environ.get("DEVIN_API_VERSION")
+            or self._get_profile_data().get("api_version", "v3")
+        )
+        return val.lower() if isinstance(val, str) else "v3"
 
     @api_version.setter
     def api_version(self, value: str):
@@ -125,6 +225,13 @@ class Config:
     @current_session_id.setter
     def current_session_id(self, value: str):
         self._set_profile_data("current_session_id", value)
+
+    def validate_for_api(self, require_org: bool = False):
+        """Validate API credentials before dispatching network requests."""
+        if not self.api_token:
+            raise APIError("Devin API token is required. Provide it via --token, DEVIN_API_TOKEN, or run 'devin configure'.")
+        if require_org and not self.org_id:
+            raise APIError("Devin Organization ID is required for this operation. Provide it via --org, DEVIN_ORG_ID, or run 'devin configure'.")
 
     def get_session_by_prompt_hash(self, prompt_hash: str) -> Optional[str]:
         return self._get_profile_data().get("prompt_hashes", {}).get(prompt_hash)

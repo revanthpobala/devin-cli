@@ -39,9 +39,13 @@ pip install devin-cli
 
 ### 2. Configuration
 ```bash
+# Interactive setup:
 devin configure
 # Paste your API token (apk_... or cog_...) from https://preview.devin.ai/settings
 # Select API version: v3 (default) or v1 (legacy)
+
+# Or non-interactive / CI setup:
+devin configure --token "$DEVIN_API_TOKEN" --org "$DEVIN_ORG_ID" --yes
 ```
 
 ### 3. Your First Session
@@ -71,6 +75,53 @@ devin --profile personal sessions create "Fix the failing tests"
 ```
 
 Profiles are stored in `~/.config/devin/config.json` — fully isolated including session caches and active session IDs.
+
+### Automation & CI / CD
+
+`devin-cli` is fully optimized for headless CI/CD runners (GitHub Actions, GitLab CI, Jenkins) and containerized workflows.
+
+#### Precedence Resolution
+Credentials and configuration resolve in a strict, predictable order:
+1. **Global CLI Flags** (`--token`, `--org`, `--base-url`, `--api-version`)
+2. **Environment Variables** (`DEVIN_API_TOKEN`, `DEVIN_ORG_ID`, `DEVIN_BASE_URL`, `DEVIN_API_VERSION`)
+3. **Config File** (`DEVIN_CONFIG_FILE` or `~/.config/devin/config.json`)
+4. **Built-in Defaults** (`base_url: https://api.devin.ai/v3`, `api_version: v3`)
+
+#### Ephemeral Runs (Zero Disk Writes)
+In CI pipelines, you do not need to create or write configuration files. Pass credentials via environment variables or root CLI flags:
+
+```bash
+# Option A: Environment variables
+export DEVIN_API_TOKEN="cog_..."
+export DEVIN_ORG_ID="org-..."
+devin repos list --json
+
+# Option B: Global CLI flags on-the-fly
+devin --token "$DEVIN_API_TOKEN" --org "$DEVIN_ORG_ID" repos status my-org/my-repo --json
+```
+
+#### Non-Interactive Configuration
+If your pipeline writes a config file, use `--yes` (or run in non-TTY environments) to disable interactive prompts:
+
+```bash
+devin configure \
+  --token "$DEVIN_API_TOKEN" \
+  --org "$DEVIN_ORG_ID" \
+  --base-url https://api.devin.ai/v3 \
+  --api-version v3 \
+  --yes
+```
+
+#### Custom Config File Path
+Override the default `~/.config/devin/config.json` location:
+
+```bash
+# Via flag
+devin --config-file /tmp/devin-ci.json repos list
+
+# Via environment variable
+export DEVIN_CONFIG_FILE=/tmp/devin-ci.json
+```
 
 ---
 

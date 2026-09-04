@@ -36,19 +36,50 @@ import importlib.metadata
 from rich.prompt import Prompt
 
 try:
-    __version__ = importlib.metadata.version("devin-cli")
-except importlib.metadata.PackageNotFoundError:
-    __version__ = "unknown"
+    from devin_cli import __version__
+except Exception:
+    try:
+        __version__ = importlib.metadata.version("devin-cli")
+    except importlib.metadata.PackageNotFoundError:
+        __version__ = "1.5.0"
 
-# Early profile detection for accurate --help menus
-if "--profile" in sys.argv:
-    idx = sys.argv.index("--profile")
-    if idx + 1 < len(sys.argv):
-        config.active_profile = sys.argv[idx + 1]
-elif "-p" in sys.argv:
-    idx = sys.argv.index("-p")
-    if idx + 1 < len(sys.argv):
-        config.active_profile = sys.argv[idx + 1]
+# Early CLI flag detection for accurate menus, config loading, and mode setup
+def _extract_cli_arg(flags: list) -> Optional[str]:
+    for flag in flags:
+        if flag in sys.argv:
+            try:
+                idx = sys.argv.index(flag)
+                if idx + 1 < len(sys.argv) and not sys.argv[idx + 1].startswith("-"):
+                    return sys.argv[idx + 1]
+            except ValueError:
+                pass
+    return None
+
+early_config_file = _extract_cli_arg(["--config-file"])
+if early_config_file:
+    config.set_config_file(early_config_file)
+elif os.environ.get("DEVIN_CONFIG_FILE"):
+    config.set_config_file(os.environ["DEVIN_CONFIG_FILE"])
+
+early_profile = _extract_cli_arg(["--profile", "-p"])
+if early_profile:
+    config.active_profile = early_profile
+
+early_token = _extract_cli_arg(["--token"])
+if early_token:
+    config.runtime.api_token = early_token
+
+early_org = _extract_cli_arg(["--org"])
+if early_org:
+    config.runtime.org_id = early_org
+
+early_base_url = _extract_cli_arg(["--base-url"])
+if early_base_url:
+    config.runtime.base_url = early_base_url
+
+early_api_version = _extract_cli_arg(["--api-version"])
+if early_api_version:
+    config.runtime.api_version = early_api_version
 
 IS_V1 = config.api_version == "v1"
 v1_tag = " [bold yellow](Legacy v1 API)[/bold yellow]" if IS_V1 else ""
@@ -101,12 +132,19 @@ ASCII_LOGO = r"""
 def main(
     ctx: typer.Context,
     profile: Optional[str] = typer.Option(None, "--profile", "-p", help="Configuration profile to use (e.g., service, personal)"),
+    token: Optional[str] = typer.Option(None, "--token", help="Devin API token (starts with apk_ or cog_). Fallback: DEVIN_API_TOKEN"),
+    org: Optional[str] = typer.Option(None, "--org", help="Organization ID (org-...). Fallback: DEVIN_ORG_ID"),
+    base_url: Optional[str] = typer.Option(None, "--base-url", help="Devin API base URL (default: https://api.devin.ai/v3). Fallback: DEVIN_BASE_URL"),
+    api_version: Optional[str] = typer.Option(None, "--api-version", help="Devin API version: v3 or v1 (default: v3). Fallback: DEVIN_API_VERSION"),
+    config_file: Optional[Path] = typer.Option(None, "--config-file", help="Custom path to config file. Fallback: DEVIN_CONFIG_FILE"),
     version: Optional[bool] = typer.Option(None, "--version", "-v", help="Show the application's version and exit."),
     json_format: bool = typer.Option(False, "--json", help="Output raw JSON (for AI agents & scripting)"),
 ):
     """
     Unofficial CLI for Devin AI v3.
     """
+    config.reset_runtime()
+
     if json_format:
         os.environ["DEVIN_OUTPUT_FORMAT"] = "json"
         
@@ -114,8 +152,19 @@ def main(
         console.print(f"devin CLI version: {__version__}")
         raise typer.Exit()
         
+    if config_file:
+        config.set_config_file(config_file)
     if profile:
         config.active_profile = profile
+    if token:
+        config.runtime.api_token = token
+    if org:
+        config.runtime.org_id = org
+    if base_url:
+        config.runtime.base_url = base_url
+    if api_version:
+        config.runtime.api_version = api_version
+        
     if ctx.invoked_subcommand is None:
         console.print(ASCII_LOGO)
 
@@ -150,10 +199,10 @@ def handle_api_error(func):
                     console.print(f"[bold red]Connection Error:[/bold red] Failed to connect to {config.base_url}")
                     console.print(f"[dim]{str(e)}[/dim]")
                 raise typer.Exit(1)
-            elif hasattr(e, "response"): # Standard APIError handling
+            elif isinstance(e, APIError) or hasattr(e, "response"): # Standard APIError handling
                 if is_json:
                     try:
-                        err_json = e.response.json()
+                        err_json = e.response.json() if hasattr(e, "response") else {"error": str(e)}
                     except Exception:
                         err_json = {"error": str(e)}
                     print(json.dumps(err_json, indent=2))
@@ -178,10 +227,12 @@ def get_current_session_id():
 
 @app.command()
 def configure(
-    token: str = typer.Option(..., prompt="Devin API Token (starts with apk_ or cog_)", help="Your Devin API Token"),
-    base_url: str = typer.Option("https://api.devin.ai/v3", prompt="Devin API Base URL", help="Devin API Base URL"),
-    org_id: Optional[str] = typer.Option(None, "--org", prompt="Organization ID (optional)", help="Default Organization ID"),
+    token: Optional[str] = typer.Option(None, "--token", "-t", help="Your Devin API Token (starts with apk_ or cog_)"),
+    base_url: Optional[str] = typer.Option(None, "--base-url", "-b", help="Devin API Base URL (default: https://api.devin.ai/v3)"),
+    org_id: Optional[str] = typer.Option(None, "--org", help="Default Organization ID"),
+    api_version: Optional[str] = typer.Option(None, "--api-version", help="API Version (v3 or v1)"),
     profile: Optional[str] = typer.Option(None, "--profile", help="Profile to configure (overrides global --profile)"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Non-interactive mode (never prompt for input)"),
 ):
     """
     Configure the CLI with your Devin API token and organization.
@@ -189,21 +240,50 @@ def configure(
     if profile:
         config.active_profile = profile
         
-    if not (token.startswith("apk_") or token.startswith("cog_")):
+    is_interactive = not yes and sys.stdin.isatty()
+
+    if not is_interactive:
+        final_token = token or config.api_token
+        if not final_token:
+            console.print("[bold red]Error:[/bold red] API token is required. Pass --token or set DEVIN_API_TOKEN.")
+            raise typer.Exit(1)
+        final_base_url = base_url or config.base_url or "https://api.devin.ai/v3"
+        final_api_version = (api_version or config.api_version or "v3").lower()
+        final_org = org_id if org_id is not None else config.org_id
+    else:
+        final_token = token
+        if not final_token:
+            final_token = Prompt.ask("Devin API Token (starts with apk_ or cog_)")
+            if not final_token:
+                console.print("[bold red]Error:[/bold red] Token cannot be empty.")
+                raise typer.Exit(1)
+
+        final_base_url = base_url or Prompt.ask("Devin API Base URL", default=config.base_url or "https://api.devin.ai/v3")
+
+        if org_id is not None:
+            final_org = org_id
+        else:
+            org_prompt = Prompt.ask("Organization ID (optional)", default=config.org_id or "")
+            final_org = org_prompt if org_prompt else None
+
+        if api_version is not None:
+            final_api_version = api_version.lower()
+        else:
+            final_api_version = Prompt.ask(f"API Version for profile '{config.active_profile}' (v3/v1)", default=config.api_version or "v3").lower()
+
+    if not (final_token.startswith("apk_") or final_token.startswith("cog_")):
         console.print("[bold yellow]Warning:[/bold yellow] Token format might be outdated. v3 tokens usually start with 'apk_' or 'cog_'.")
     
-    api_version_prompt = Prompt.ask(f"API Version for profile '{config.active_profile}' (v3/v1)", default=config.api_version or "v3")
+    if "api.devin.ai" in final_base_url and "v3" in final_base_url and final_api_version == "v1":
+        final_base_url = final_base_url.replace("/v3", "/v1")
+    elif "api.devin.ai" in final_base_url and "v1" in final_base_url and final_api_version == "v3":
+        final_base_url = final_base_url.replace("/v1", "/v3")
 
-    if "api.devin.ai" in base_url and "v3" in base_url and api_version_prompt == "v1":
-        base_url = base_url.replace("/v3", "/v1")
-    elif "api.devin.ai" in base_url and "v1" in base_url and api_version_prompt == "v3":
-        base_url = base_url.replace("/v1", "/v3")
-
-    config.api_token = token
-    config.base_url = base_url
-    config.api_version = api_version_prompt
-    if org_id:
-        config.org_id = org_id
+    config.api_token = final_token
+    config.base_url = final_base_url
+    config.api_version = final_api_version
+    if final_org:
+        config.org_id = final_org
     console.print(f"[green]Configuration saved to {config.config_file}[/green]")
     return None
 

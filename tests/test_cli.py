@@ -25,3 +25,10 @@ def test_cli_handles_api_error():
         assert "Error" in result.stdout
         assert "API BOOM" in result.stdout
 
+
+def test_app_version():
+    result = runner.invoke(app, ["--version"])
+    assert result.exit_code == 0
+    assert "1.5.0" in result.stdout
+
+

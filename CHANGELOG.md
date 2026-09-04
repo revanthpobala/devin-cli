@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-09-04
+### Added
+- **On-the-Fly Configuration & Global CLI Flags**: Root command now supports `--token`, `--org`, `--base-url`, `--api-version`, and `--config-file` flags, allowing complete credential configuration on the fly without writing to disk or modifying saved configs.
+- **Predictable Precedence Resolution**: Formalized resolution order across all authentication paths:
+  1. CLI Flags (`--token`, `--org`, `--base-url`, `--api-version`)
+  2. Environment Variables (`DEVIN_API_TOKEN`, `DEVIN_ORG_ID`, `DEVIN_BASE_URL`, `DEVIN_API_VERSION`)
+  3. Config File Profile (`DEVIN_CONFIG_FILE` or `~/.config/devin/config.json`)
+  4. Defaults (`base_url: https://api.devin.ai/v3`, `api_version: v3`)
+- **Zero Disk Writes / Deferred File Creation**: Initializing `Config` or invoking commands with flags/environment variables never touches the filesystem. Config file/directory creation is deferred strictly to explicit save actions (such as `devin configure`), fully unblocking read-only and ephemeral CI runners.
+- **Non-Interactive `configure` Command**: Added `--yes` / `-y` flag and non-TTY stdin autodetection to `devin configure`. Omitting options in non-interactive mode falls back to default values and credentials instead of aborting.
+- **Dynamic Config File Override**: Full support for `DEVIN_CONFIG_FILE` environment variable and `--config-file` flag to direct the CLI to custom config files.
+- **Thread/Context-Safe Runtime Overrides**: Runtime overrides are stored via `contextvars.ContextVar` and cleanly scoped per invocation with `config.reset_runtime()`.
+- **Pre-flight Validation & Scoping Hints**: `validate_for_api()` validates credentials before network requests and outputs helpful diagnostic hints (`Org ID: ...`) when endpoints require organization scoping.
+
+### Fixed
+- **Sanitized Token and Org Inputs**: Automatic trimming of leading/trailing whitespace and newlines from tokens and organization IDs.
+- **Configure Prompt Bugs**: Fixed an issue where `devin configure` always prompted for API version even when non-interactive, and improved option handling so explicit flags bypass interactive prompts.
+
 ## [1.4.0] - 2026-08-01
 ### Added
 - **Model Selection & Agent Modes**: Full support for `--devin-mode` / `--mode` / `--model` (`normal`, `fast`, `lite`, `ultra`, `fusion`), `--platform`, `--resumable / --no-resumable`, and `--structured-output-required` on `devin sessions create` and `devin create-session`.

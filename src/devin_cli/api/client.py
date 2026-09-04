@@ -1,15 +1,10 @@
 import httpx
-from devin_cli.config import config
+from devin_cli.config import config, APIError
 from rich.console import Console
 import sys
 from typing import Optional, Any, Dict
 
 console = Console()
-
-class APIError(Exception):
-    def __init__(self, message: str, status_code: Optional[int] = None):
-        super().__init__(message)
-        self.status_code = status_code
 
 class BaseClient:
     def __init__(self):
@@ -34,9 +29,7 @@ class BaseClient:
         return config.base_url.rstrip("/")
 
     def _ensure_token(self):
-        if not self.token:
-            # Only raise error if meaningful operation is attempted
-            raise APIError("API token not found. Run 'devin configure' to set your API token.")
+        config.validate_for_api()
 
     def _handle_response(self, response: httpx.Response) -> Any:
         try:
@@ -53,6 +46,10 @@ class BaseClient:
                 error_detail = e.response.text.strip()
                 
             msg_suffix = f"\n  Path:   {path}"
+            if config.org_id:
+                msg_suffix += f"\n  Org ID: {config.org_id}"
+            elif "/organizations/" not in path and not path.startswith("/enterprise"):
+                msg_suffix += f"\n  Org ID: None (Hint: this endpoint may require --org or DEVIN_ORG_ID)"
             if error_detail:
                 msg_suffix += f"\n  Detail: {error_detail}"
 
